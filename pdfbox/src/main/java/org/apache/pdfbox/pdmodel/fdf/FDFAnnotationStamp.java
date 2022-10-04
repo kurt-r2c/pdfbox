@@ -144,6 +144,9 @@ public class FDFAnnotationStamp extends FDFAnnotation
             DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
 
             // Parse the content to Document object
+            // should-match: easy
+            // source is Loader.loadXFDF(...)
+            // issue is XXE - external form-data is a user-controllable XML document
             return builder.parse(new ByteArrayInputStream(xml));
         }
         catch (ParserConfigurationException ex)
