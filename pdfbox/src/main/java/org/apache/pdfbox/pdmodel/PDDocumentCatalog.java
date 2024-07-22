@@ -20,8 +20,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
@@ -58,7 +58,7 @@ import org.apache.pdfbox.pdmodel.interactive.viewerpreferences.PDViewerPreferenc
  */
 public class PDDocumentCatalog implements COSObjectable
 {
-    private static final Log LOG = LogFactory.getLog(PDDocumentCatalog.class);
+    private static final Logger LOG = LogManager.getLogger(PDDocumentCatalog.class);
     
     private final COSDictionary root;
     private final PDDocument document;
@@ -158,6 +158,8 @@ public class PDDocumentCatalog implements COSObjectable
 
     /**
      * Returns all pages in the document, as a page tree.
+     * 
+     * @return PDPageTree providing all pages of the document
      */
     public PDPageTree getPages()
     {
@@ -209,6 +211,8 @@ public class PDDocumentCatalog implements COSObjectable
 
     /**
      * Returns the document's article threads.
+     * 
+     * @return a list of all threads of the document
      */
     public List<PDThread> getThreads()
     {
@@ -216,6 +220,7 @@ public class PDDocumentCatalog implements COSObjectable
         if (array == null)
         {
             array = new COSArray();
+            array.setDirect(false);
             root.setItem(COSName.THREADS, array);
         }
         List<PDThread> pdObjects = new ArrayList<>(array.size());
@@ -233,7 +238,9 @@ public class PDDocumentCatalog implements COSObjectable
      */
     public void setThreads(List<PDThread> threads)
     {
-        root.setItem(COSName.THREADS, new COSArray(threads));
+        COSArray threadsArray = new COSArray(threads);
+        threadsArray.setDirect(false);
+        root.setItem(COSName.THREADS, threadsArray);
     }
 
     /**
@@ -399,7 +406,7 @@ public class PDDocumentCatalog implements COSObjectable
     /**
      * Get the list of OutputIntents defined in the document.
      *
-     * @return The list of PDOutputIntent
+     * @return The list of PDOutputIntent, never null.
      */
     public List<PDOutputIntent> getOutputIntents()
     {
@@ -455,6 +462,8 @@ public class PDDocumentCatalog implements COSObjectable
 
     /**
      * Returns the page display mode.
+     * 
+     * @return the PageMode of the document, if not present PageMode.USE_NONE is returned
      */
     public PageMode getPageMode()
     {
@@ -467,7 +476,7 @@ public class PDDocumentCatalog implements COSObjectable
             }
             catch (IllegalArgumentException e)
             {
-                LOG.debug("Invalid PageMode used '" + mode + "' - setting to PageMode.USE_NONE", e);
+                LOG.debug(() -> "Invalid PageMode used '" + mode + "' - setting to PageMode.USE_NONE", e);
                 return PageMode.USE_NONE;
             }
         }
@@ -489,6 +498,8 @@ public class PDDocumentCatalog implements COSObjectable
 
     /**
      * Returns the page layout.
+     * 
+     * @return the PageLayout of the document, if not present PageLayout.SINGLE_PAGE is returned
      */
     public PageLayout getPageLayout()
     {
@@ -501,7 +512,8 @@ public class PDDocumentCatalog implements COSObjectable
             }
             catch (IllegalArgumentException e)
             {
-                LOG.warn("Invalid PageLayout used '" + mode + "' - returning PageLayout.SINGLE_PAGE", e);
+                LOG.warn(() -> "Invalid PageLayout used '" + mode + "' - returning PageLayout.SINGLE_PAGE",
+                        e);
             }
         }
         return PageLayout.SINGLE_PAGE;
@@ -519,6 +531,8 @@ public class PDDocumentCatalog implements COSObjectable
 
     /**
      * Returns the document-level URI.
+     * 
+     * @return the document level URI if present, otherwise null
      */
     public PDURIDictionary getURI()
     {
@@ -538,6 +552,8 @@ public class PDDocumentCatalog implements COSObjectable
 
     /**
      * Get the document's structure tree root, or null if none exists.
+     * 
+     * @return the structure tree root if present, otherwise null
      */
     public PDStructureTreeRoot getStructureTreeRoot()
     {
@@ -557,6 +573,8 @@ public class PDDocumentCatalog implements COSObjectable
 
     /**
      * Returns the language for the document, or null.
+     * 
+     * @return the language of the document if present, otherwise null
      */
     public String getLanguage()
     {

@@ -20,13 +20,13 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
-import java.util.Arrays;
 import javax.swing.BoxLayout;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import java.io.IOException;
+import java.util.List;
 
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceN;
@@ -46,6 +46,8 @@ public class CSDeviceN
      * Constructor
      *
      * @param array COSArray instance that holds the DeviceN color space
+     * 
+     * @throws IOException if the instance could not be created
      */
     public CSDeviceN(COSArray array) throws IOException
     {
@@ -62,17 +64,15 @@ public class CSDeviceN
      */
     private DeviceNColorant[] getColorantData() throws IOException
     {
-        int componentCount = deviceN.getNumberOfComponents();
+        List<String> colorantNames = deviceN.getColorantNames();
+        int componentCount = colorantNames.size();
         DeviceNColorant[] colorants = new DeviceNColorant[componentCount];
         for (int i = 0; i < componentCount; i++)
         {
             DeviceNColorant colorant = new DeviceNColorant();
-
-            colorant.setName(deviceN.getColorantNames().get(i));
+            colorant.setName(colorantNames.get(i));
             float[] maximum = new float[componentCount];
-            Arrays.fill(maximum, 0);
             float[] minimum = new float[componentCount];
-            Arrays.fill(minimum, 0);
             maximum[i] = 1;
             colorant.setMaximum(getColorObj(deviceN.toRGB(maximum)));
             colorant.setMinimum(getColorObj(deviceN.toRGB(minimum)));

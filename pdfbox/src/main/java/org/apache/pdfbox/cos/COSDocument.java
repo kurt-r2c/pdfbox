@@ -25,11 +25,11 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 import org.apache.pdfbox.io.IOUtils;
-import org.apache.pdfbox.io.MemoryUsageSetting;
-import org.apache.pdfbox.io.ScratchFile;
+import org.apache.pdfbox.io.RandomAccessStreamCache;
+import org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction;
 
 /**
  * This is the in-memory representation of the PDF document.  You need to call
@@ -44,7 +44,7 @@ public class COSDocument extends COSBase implements Closeable
     /**
      * Log instance.
      */
-    private static final Log LOG = LogFactory.getLog(COSDocument.class);
+    private static final Logger LOG = LogManager.getLogger(COSDocument.class);
     
     private float version = 1.4f;
 
@@ -82,7 +82,9 @@ public class COSDocument extends COSBase implements Closeable
 
     private boolean isXRefStream;
 
-    private ScratchFile scratchFile;
+    private boolean hasHybridXRef = false;
+
+    private final RandomAccessStreamCache streamCache;
 
     /**
      * Used for incremental saving, to avoid XRef object numbers from being reused.
@@ -98,7 +100,7 @@ public class COSDocument extends COSBase implements Closeable
      */
     public COSDocument()
     {
-        this(MemoryUsageSetting.setupMainMemoryOnly());
+        this(IOUtils.createMemoryOnlyStreamCache());
     }
 
     /**
@@ -108,48 +110,58 @@ public class COSDocument extends COSBase implements Closeable
      */
     public COSDocument(ICOSParser parser)
     {
-        this(MemoryUsageSetting.setupMainMemoryOnly(), parser);
+        this(IOUtils.createMemoryOnlyStreamCache(), parser);
     }
 
     /**
-     * Constructor that will use the provided memory settings for storage of the PDF streams.
+     * Constructor that will use the provided function to create a stream cache for the storage of the PDF streams.
      *
-     * @param memUsageSetting defines how memory is used for buffering PDF streams
+     * @param streamCacheCreateFunction a function to create an instance of a stream cache
      * 
      */
-    public COSDocument(MemoryUsageSetting memUsageSetting)
+    public COSDocument(StreamCacheCreateFunction streamCacheCreateFunction)
     {
-        this(memUsageSetting, null);
+        this(streamCacheCreateFunction, null);
     }
 
     /**
-     * Constructor that will use the provided memory settings for storage of the PDF streams.
+     * Constructor that will use the provided function to create a stream cache for the storage of the PDF streams.
      *
-     * @param memUsageSetting defines how memory is used for buffering PDF streams
+     * @param streamCacheCreateFunction a function to create an instance of a stream cache
      * @param parser Parser to be used to parse the document on demand
      * 
      */
-    public COSDocument(MemoryUsageSetting memUsageSetting, ICOSParser parser)
+    public COSDocument(StreamCacheCreateFunction streamCacheCreateFunction, ICOSParser parser)
     {
+        streamCache = getStreamCache(streamCacheCreateFunction);
+        this.parser = parser;
+    }
+
+    private RandomAccessStreamCache getStreamCache(StreamCacheCreateFunction streamCacheCreateFunction)
+    {
+        if (streamCacheCreateFunction == null)
+        {
+            return null;
+        }
         try
         {
-            if (memUsageSetting != null)
-            {
-                scratchFile = new ScratchFile(memUsageSetting);
-            }
-            else
-            {
-                scratchFile = ScratchFile.getMainMemoryOnlyInstance();
-            }
+            return streamCacheCreateFunction.create();
         }
-        catch (IOException ioe)
+        catch (IOException exception1)
         {
-            LOG.warn("Error initializing scratch file: " + ioe.getMessage()
-                    + ". Fall back to main memory usage only.", ioe);
-
-            scratchFile = ScratchFile.getMainMemoryOnlyInstance();
+            LOG.warn(
+                    "An error occured when creating stream cache. Using memory only cache as fallback.",
+                    exception1);
         }
-        this.parser = parser;
+        try
+        {
+            return IOUtils.createMemoryOnlyStreamCache().create();
+        }
+        catch (IOException exception2)
+        {
+            LOG.warn("An error occured when creating stream cache for fallback.", exception2);
+        }
+        return null;
     }
 
     /**
@@ -159,7 +171,7 @@ public class COSDocument extends COSBase implements Closeable
      */
     public COSStream createCOSStream()
     {
-        COSStream stream = new COSStream(scratchFile);
+        COSStream stream = new COSStream(streamCache);
         // collect all COSStreams so that they can be closed when closing the COSDocument.
         // This is limited to newly created pdfs as all COSStreams of an existing pdf are
         // collected within the map objectPool
@@ -180,9 +192,10 @@ public class COSDocument extends COSBase implements Closeable
     public COSStream createCOSStream(COSDictionary dictionary, long startPosition,
             long streamLength) throws IOException
     {
-        COSStream stream = new COSStream(scratchFile,
+        COSStream stream = new COSStream(streamCache,
                 parser.createRandomAccessReadView(startPosition, streamLength));
         dictionary.forEach(stream::setItem);
+        stream.setKey(dictionary.getKey());
         return stream;
     }
 
@@ -238,12 +251,27 @@ public class COSDocument extends COSBase implements Closeable
      */
     public List<COSObject> getObjectsByType(COSName type1, COSName type2)
     {
+        List<COSObjectKey> originKeys = new ArrayList<>(xrefTable.keySet());
+        List<COSObject> retval = getObjectsByType(originKeys, type1, type2);
+        // there might be some additional objects if the brute force parser was triggered
+        // due to a broken cross reference table/stream
+        if (originKeys.size() < xrefTable.size())
+        {
+            List<COSObjectKey> additionalKeys = new ArrayList<>(xrefTable.keySet());
+            additionalKeys.removeAll(originKeys);
+            retval.addAll(getObjectsByType(additionalKeys, type1, type2));
+        }
+        return retval;
+    }
+
+    private List<COSObject> getObjectsByType(List<COSObjectKey> keys, COSName type1, COSName type2)
+    {
         List<COSObject> retval = new ArrayList<>();
-        for (COSObjectKey objectKey : xrefTable.keySet())
+        for (COSObjectKey objectKey : keys)
         {
             COSObject objectFromPool = getObjectFromPool(objectKey);
             COSBase realObject = objectFromPool.getObject();
-            if( realObject instanceof COSDictionary )
+            if (realObject instanceof COSDictionary)
             {
                 COSName dictType = ((COSDictionary) realObject).getCOSName(COSName.TYPE);
                 if (type1.equals(dictType) || (type2 != null && type2.equals(dictType)))
@@ -417,7 +445,7 @@ public class COSDocument extends COSBase implements Closeable
         // Make sure that:
         // - first Exception is kept
         // - all COSStreams are closed
-        // - ScratchFile is closed
+        // - stream cache is closed
         // - there's a way to see which errors occurred
         IOException firstException = null;
 
@@ -440,9 +468,10 @@ public class COSDocument extends COSBase implements Closeable
             firstException = IOUtils.closeAndLogException(stream, LOG, "COSStream", firstException);
         }
 
-        if (scratchFile != null)
+        if (streamCache != null)
         {
-            firstException = IOUtils.closeAndLogException(scratchFile, LOG, "ScratchFile", firstException);
+            firstException = IOUtils.closeAndLogException(streamCache, LOG, "Stream Cache",
+                    firstException);
         }
         closed = true;
 
@@ -455,6 +484,8 @@ public class COSDocument extends COSBase implements Closeable
 
     /**
      * Returns true if this document has been closed.
+     * 
+     * @return true if the document is already closed, false otherwise
      */
     public boolean isClosed()
     {
@@ -541,6 +572,24 @@ public class COSDocument extends COSBase implements Closeable
         isXRefStream = isXRefStreamValue;
     }
     
+    /**
+     * Determines if the pdf has hybrid cross references, both plain tables and streams.
+     * 
+     * @return true if the pdf has hybrid cross references
+     */
+    public boolean hasHybridXRef()
+    {
+        return hasHybridXRef;
+    }
+
+    /**
+     * Marks the pdf as document using hybrid cross references.
+     */
+    public void setHasHybridXRef()
+    {
+        hasHybridXRef = true;
+    }
+
     /**
      * Returns the {@link COSDocumentState} of this {@link COSDocument}.
      *

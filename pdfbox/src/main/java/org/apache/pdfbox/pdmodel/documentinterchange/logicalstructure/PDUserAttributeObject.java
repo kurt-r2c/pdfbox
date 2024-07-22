@@ -46,6 +46,7 @@ public class PDUserAttributeObject extends PDAttributeObject
     }
 
     /**
+     * Constructor
      * 
      * @param dictionary the dictionary
      */
@@ -79,11 +80,7 @@ public class PDUserAttributeObject extends PDAttributeObject
      */
     public void setUserProperties(List<PDUserProperty> userProperties)
     {
-        COSArray p = new COSArray();
-        for (PDUserProperty userProperty : userProperties)
-        {
-            p.add(userProperty);
-        }
+        COSArray p = new COSArray(userProperties);
         this.getCOSObject().setItem(COSName.P, p);
     }
 
@@ -118,7 +115,9 @@ public class PDUserAttributeObject extends PDAttributeObject
     }
 
     /**
-     * @param userProperty  
+     * Notify a possible change of user properties.
+     * 
+     * @param userProperty the user property which might have be changed
      */
     public void userPropertyChanged(PDUserProperty userProperty)
     {

@@ -26,7 +26,6 @@ import java.io.Writer;
 import java.text.Bidi;
 import java.text.Normalizer;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -39,8 +38,8 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageTree;
@@ -64,7 +63,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
     private static float defaultIndentThreshold = 2.0f;
     private static float defaultDropThreshold = 2.5f;
 
-    private static final Log LOG = LogFactory.getLog(PDFTextStripper.class);
+    private static final Logger LOG = LogManager.getLogger(PDFTextStripper.class);
 
     // enable the ability to set the default indent/drop thresholds
     // with -D system properties:
@@ -87,7 +86,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
             // ignore and use default
             LOG.debug("Couldn't read system properties - using defaults", e);
         }
-        if (strIndent != null && strIndent.length() > 0)
+        if (strIndent != null && !strIndent.isEmpty())
         {
             try
             {
@@ -98,7 +97,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                 // ignore and use default
             }
         }
-        if (strDrop != null && strDrop.length() > 0)
+        if (strDrop != null && !strDrop.isEmpty())
         {
             try
             {
@@ -114,7 +113,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
     /**
      * The platform's line separator.
      */
-    protected final String LINE_SEPARATOR = System.getProperty("line.separator");
+    protected static final String LINE_SEPARATOR = System.lineSeparator();
 
     private String lineSeparator = LINE_SEPARATOR;
     private String wordSeparator = " ";
@@ -125,7 +124,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
     private String articleStart = "";
     private String articleEnd = "";
 
-    private int currentPageNo = 0;
+    private int currentPageNo = 1;
     private int startPage = 1;
     private int endPage = Integer.MAX_VALUE;
     private PDOutlineItem startBookmark = null;
@@ -205,7 +204,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
 
     private void resetEngine()
     {
-        currentPageNo = 0;
+        currentPageNo = 1;
         document = null;
         charactersByArticle.clear();
         characterListMapping.clear();
@@ -282,11 +281,11 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
 
         for (PDPage page : pages)
         {
-            currentPageNo++;
             if (page.hasContents())
             {
                 processPage(page);
             }
+            currentPageNo++;
         }
     }
 
@@ -486,7 +485,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
 
         boolean startOfPage = true; // flag to indicate start of page
         boolean startOfArticle;
-        if (charactersByArticle.size() > 0)
+        if (!charactersByArticle.isEmpty())
         {
             writePageStart();
         }
@@ -502,7 +501,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                 // a custom mergesort implementation (which is slower, unfortunately).
                 try
                 {
-                    Collections.sort(textList, comparator);
+                    textList.sort(comparator);
                 }
                 catch (IllegalArgumentException e)
                 {
@@ -693,7 +692,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                 previousAveCharWidth = averageCharWidth;
             }
             // print the final line
-            if (line.size() > 0)
+            if (!line.isEmpty())
             {
                 writeLine(normalize(line));
                 writeParagraphEnd();
@@ -793,12 +792,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
             float textX = text.getX();
             float textY = text.getY();
             TreeMap<Float, TreeSet<Float>> sameTextCharacters = characterListMapping
-                    .get(textCharacter);
-            if (sameTextCharacters == null)
-            {
-                sameTextCharacters = new TreeMap<>();
-                characterListMapping.put(textCharacter, sameTextCharacters);
-            }
+                    .computeIfAbsent(textCharacter, k -> new TreeMap<>());
             // RDD - Here we compute the value that represents the end of the rendered
             // text. This value is used to determine whether subsequent text rendered
             // on the same line overwrites the current text.
@@ -825,12 +819,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
             }
             if (!suppressCharacter)
             {
-                TreeSet<Float> ySet = sameTextCharacters.get(textX);
-                if (ySet == null)
-                {
-                    ySet = new TreeSet<>();
-                    sameTextCharacters.put(textX, ySet);
-                }
+                TreeSet<Float> ySet = sameTextCharacters.computeIfAbsent(textX, k -> new TreeSet<>());
                 ySet.add(textY);
                 showCharacter = true;
             }
@@ -957,9 +946,15 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
      * This will set the first page to be extracted by this class.
      *
      * @param startPageValue New value of 1-based startPage property.
+     * 
+     * @throws IllegalArgumentException if the parameter is below 1.
      */
     public void setStartPage(int startPageValue)
     {
+        if (startPageValue <= 0)
+        {
+            throw new IllegalArgumentException("Parameter must be 1-based, but is " + startPageValue);
+        }
         startPage = startPageValue;
     }
 
@@ -979,9 +974,15 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
      * This will set the last page to be extracted by this class.
      *
      * @param endPageValue New value of 1-based endPage property.
+     *
+     * @throws IllegalArgumentException if the parameter is below 1.
      */
     public void setEndPage(int endPageValue)
     {
+        if (endPageValue <= 0)
+        {
+            throw new IllegalArgumentException("Parameter must be 1-based, but is " + endPageValue);
+        }
         endPage = endPageValue;
     }
 
@@ -1830,8 +1831,8 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         }
         catch (IOException e)
         {
-            LOG.warn("Could not parse BidiMirroring.txt, mirroring char map will be empty: "
-                    + e.getMessage(), e);
+            LOG.warn("Could not parse BidiMirroring.txt, mirroring char map will be empty: {}",
+                    e.getMessage(), e);
         }
     }
 
@@ -1928,8 +1929,18 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                 else
                 {
                     // Trim because some decompositions have an extra space, such as U+FC5E
-                    builder.append(Normalizer
-                            .normalize(word.substring(q, q + 1), Normalizer.Form.NFKC).trim());
+                    String normalized = Normalizer.normalize(
+                            word.substring(q, q + 1), Normalizer.Form.NFKC).trim();
+                    
+                    // Hebrew in Alphabetic Presentation Forms from FB1D to FB4F and
+                    // Arabic Presentation Forms-A from FB50 to FDFF and
+                    // Arabic Presentation Forms-B from FE70 to FEFF
+                    if (0xFB1D <= c && normalized.length() > 1)
+                    {
+                        // Reverse the order of decomposed Hebrew and Arabic letters
+                        normalized = new StringBuilder(normalized).reverse().toString();
+                    }
+                    builder.append(normalized);
                 }
                 p = q + 1;
             }
@@ -1963,7 +1974,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         else
         {
             TextPosition text = item.getTextPosition();
-            lineBuilder.append(text.getUnicode());
+            lineBuilder.append(text.getVisuallyOrderedUnicode());
             wordPositions.add(text);
         }
         return lineBuilder;

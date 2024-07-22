@@ -21,14 +21,17 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
+import java.util.regex.Pattern;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 import org.apache.fontbox.ttf.gsub.GlyphSubstitutionDataExtractor;
 import org.apache.fontbox.ttf.model.GsubData;
 import org.apache.fontbox.ttf.table.common.CoverageTable;
@@ -37,19 +40,21 @@ import org.apache.fontbox.ttf.table.common.CoverageTableFormat2;
 import org.apache.fontbox.ttf.table.common.FeatureListTable;
 import org.apache.fontbox.ttf.table.common.FeatureRecord;
 import org.apache.fontbox.ttf.table.common.FeatureTable;
-import org.apache.fontbox.ttf.table.common.LangSysRecord;
 import org.apache.fontbox.ttf.table.common.LangSysTable;
 import org.apache.fontbox.ttf.table.common.LookupListTable;
 import org.apache.fontbox.ttf.table.common.LookupSubTable;
 import org.apache.fontbox.ttf.table.common.LookupTable;
 import org.apache.fontbox.ttf.table.common.RangeRecord;
-import org.apache.fontbox.ttf.table.common.ScriptRecord;
 import org.apache.fontbox.ttf.table.common.ScriptTable;
+import org.apache.fontbox.ttf.table.gsub.AlternateSetTable;
 import org.apache.fontbox.ttf.table.gsub.LigatureSetTable;
 import org.apache.fontbox.ttf.table.gsub.LigatureTable;
+import org.apache.fontbox.ttf.table.gsub.LookupTypeAlternateSubstitutionFormat1;
 import org.apache.fontbox.ttf.table.gsub.LookupTypeLigatureSubstitutionSubstFormat1;
+import org.apache.fontbox.ttf.table.gsub.LookupTypeMultipleSubstitutionFormat1;
 import org.apache.fontbox.ttf.table.gsub.LookupTypeSingleSubstFormat1;
 import org.apache.fontbox.ttf.table.gsub.LookupTypeSingleSubstFormat2;
+import org.apache.fontbox.ttf.table.gsub.SequenceTable;
 
 /**
  * A glyph substitution 'GSUB' table in a TrueType or OpenType font.
@@ -58,7 +63,7 @@ import org.apache.fontbox.ttf.table.gsub.LookupTypeSingleSubstFormat2;
  */
 public class GlyphSubstitutionTable extends TTFTable
 {
-    private static final Log LOG = LogFactory.getLog(GlyphSubstitutionTable.class);
+    private static final Logger LOG = LogManager.getLogger(GlyphSubstitutionTable.class);
 
     public static final String TAG = "GSUB";
 
@@ -74,9 +79,16 @@ public class GlyphSubstitutionTable extends TTFTable
 
     private GsubData gsubData;
 
+    /**
+     * The regex represents 4 'word characters' [a-zA-Z_0-9], see
+     * {@link java.util.regex.ASCII#WORD}.
+     * <p>
+     * Note: the ' '-character is not matched!
+     */
+    private static final Predicate<String> IS_4_CHAR_WORD = Pattern.compile("\\w{4}").asMatchPredicate();
+
     GlyphSubstitutionTable()
     {
-        super();
     }
 
     @Override
@@ -99,12 +111,42 @@ public class GlyphSubstitutionTable extends TTFTable
 
         scriptList = readScriptList(data, start + scriptListOffset);
         featureListTable = readFeatureList(data, start + featureListOffset);
-        lookupListTable = readLookupList(data, start + lookupListOffset);
+        if (lookupListOffset > 0)
+        {
+            lookupListTable = readLookupList(data, start + lookupListOffset);
+        }
+        else
+        {
+            // happened with NotoSansNewTaiLue-Regular.ttf in noto-fonts-20201206-phase3.zip
+            LOG.warn("lookupListOffset is 0, LookupListTable is considered empty");
+            lookupListTable = new LookupListTable(0, new LookupTable[0]);
+        }
+
+        LookupTable[] lookupTable = lookupListTable.getLookups();
+        for (FeatureRecord rec : featureListTable.getFeatureRecords())
+        {
+            FeatureTable tab = rec.getFeatureTable();
+            String tag = rec.getFeatureTag();
+            int[] indices = tab.getLookupListIndices();
+            for (int i = 0; i < indices.length; ++i)
+            {
+                int lookupType = lookupTable[indices[i]].getLookupType();
+
+                LookupSubTable[] lst = lookupTable[indices[i]].getSubTables();
+                if (lst.length == 0 || lst[0] == null)
+                {
+                    LOG.debug("Type {} GSUB feature '{}' at index {} unavailable",
+                            lookupType, tag, indices[i]);
+                }
+            }
+        }
 
         GlyphSubstitutionDataExtractor glyphSubstitutionDataExtractor = new GlyphSubstitutionDataExtractor();
 
         gsubData = glyphSubstitutionDataExtractor
                 .getGsubData(scriptList, featureListTable, lookupListTable);
+
+        initialized = true;
     }
 
     private Map<String, ScriptTable> readScriptList(TTFDataStream data, long offset)
@@ -112,9 +154,9 @@ public class GlyphSubstitutionTable extends TTFTable
     {
         data.seek(offset);
         int scriptCount = data.readUnsignedShort();
-        ScriptTable[] scriptTables= new ScriptTable[scriptCount];
         int[] scriptOffsets = new int[scriptCount];
         String[] scriptTags = new String[scriptCount];
+        Map<String, ScriptTable> resultScriptList = new LinkedHashMap<>(scriptCount);
         for (int i = 0; i < scriptCount; i++)
         {
             scriptTags[i] = data.readString(4);
@@ -122,13 +164,8 @@ public class GlyphSubstitutionTable extends TTFTable
         }
         for (int i = 0; i < scriptCount; i++)
         {
-            scriptTables[i] = readScriptTable(data, offset + scriptOffsets[i]);
-        }
-        Map<String, ScriptTable> resultScriptList = new LinkedHashMap<>(scriptCount);
-        for (int i = 0; i < scriptCount; i++)
-        {
-            ScriptRecord scriptRecord = new ScriptRecord(scriptTags[i], scriptTables[i]);
-            resultScriptList.put(scriptRecord.getScriptTag(), scriptRecord.getScriptTable());
+            ScriptTable scriptTable = readScriptTable(data, offset + scriptOffsets[i]);
+            resultScriptList.put(scriptTags[i], scriptTable);
         }
         return Collections.unmodifiableMap(resultScriptList);
     }
@@ -138,7 +175,6 @@ public class GlyphSubstitutionTable extends TTFTable
         data.seek(offset);
         int defaultLangSys = data.readUnsignedShort();
         int langSysCount = data.readUnsignedShort();
-        LangSysRecord[] langSysRecords = new LangSysRecord[langSysCount];
         String[] langSysTags = new String[langSysCount];
         int[] langSysOffsets = new int[langSysCount];
         for (int i = 0; i < langSysCount; i++)
@@ -148,8 +184,8 @@ public class GlyphSubstitutionTable extends TTFTable
             {
                 // PDFBOX-4489: catch corrupt file
                 // https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#slTbl_sRec
-                LOG.error("LangSysRecords not alphabetically sorted by LangSys tag: " +
-                          langSysTags[i] + " <= " + langSysTags[i - 1]);
+                LOG.error("LangSysRecords not alphabetically sorted by LangSys tag: {} <= {}",
+                        langSysTags[i], langSysTags[i - 1]);
                 return new ScriptTable(null, new LinkedHashMap<>());
             }
             langSysOffsets[i] = data.readUnsignedShort();
@@ -161,16 +197,11 @@ public class GlyphSubstitutionTable extends TTFTable
         {
             defaultLangSysTable = readLangSysTable(data, offset + defaultLangSys);
         }
+        Map<String, LangSysTable> langSysTables = new LinkedHashMap<>(langSysCount);
         for (int i = 0; i < langSysCount; i++)
         {
             LangSysTable langSysTable = readLangSysTable(data, offset + langSysOffsets[i]);
-            langSysRecords[i] = new LangSysRecord(langSysTags[i], langSysTable);
-        }
-        Map<String, LangSysTable> langSysTables = new LinkedHashMap<>(langSysCount);
-        for (LangSysRecord langSysRecord : langSysRecords)
-        {
-            langSysTables.put(langSysRecord.getLangSysTag(),
-                    langSysRecord.getLangSysTable());
+            langSysTables.put(langSysTags[i], langSysTable);
         }
         return new ScriptTable(defaultLangSysTable, Collections.unmodifiableMap(langSysTables));
     }
@@ -204,17 +235,18 @@ public class GlyphSubstitutionTable extends TTFTable
             {
                 // catch corrupt file
                 // https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#flTbl
-                if (featureTags[i].matches("\\w{4}") && featureTags[i-1].matches("\\w{4}"))
+                if (IS_4_CHAR_WORD.test(featureTags[i]) && IS_4_CHAR_WORD.test(featureTags[i - 1]))
                 {
                     // ArialUni.ttf has many warnings but isn't corrupt, so we assume that only
                     // strings with trash characters indicate real corruption
-                    LOG.debug("FeatureRecord array not alphabetically sorted by FeatureTag: " +
-                              featureTags[i] + " < " + featureTags[i - 1]);
+                    LOG.debug(
+                            "FeatureRecord array not alphabetically sorted by FeatureTag: {} < {}",
+                            featureTags[i], featureTags[i - 1]);
                 }
                 else
                 {
-                    LOG.warn("FeatureRecord array not alphabetically sorted by FeatureTag: " +
-                              featureTags[i] + " < " + featureTags[i - 1]);
+                    LOG.warn("FeatureRecord array not alphabetically sorted by FeatureTag: {} < {}",
+                            featureTags[i], featureTags[i - 1]);
                     return new FeatureListTable(0, new FeatureRecord[0]);
                 }
             }
@@ -249,6 +281,14 @@ public class GlyphSubstitutionTable extends TTFTable
         for (int i = 0; i < lookupCount; i++)
         {
             lookups[i] = data.readUnsignedShort();
+            if (lookups[i] == 0)
+            {
+                LOG.error("lookups[{}] is 0 at offset {}", i, data.getCurrentPosition() - 2);
+            }
+            else if (offset + lookups[i] > data.getOriginalDataSize())
+            {
+                LOG.error("{} > {}", offset + lookups[i], data.getOriginalDataSize());
+            }
         }
         LookupTable[] lookupTables = new LookupTable[lookupCount];
         for (int i = 0; i < lookupCount; i++)
@@ -258,16 +298,63 @@ public class GlyphSubstitutionTable extends TTFTable
         return new LookupListTable(lookupCount, lookupTables);
     }
 
+    private LookupSubTable readLookupSubtable(TTFDataStream data, long offset, int lookupType) throws IOException
+    {
+        switch (lookupType)
+        {
+            case 1:
+                // Single Substitution Subtable
+                // https://docs.microsoft.com/en-us/typography/opentype/spec/gsub#SS
+                return readSingleLookupSubTable(data, offset);
+            case 2:
+                // Multiple Substitution Subtable
+                // https://learn.microsoft.com/en-us/typography/opentype/spec/gsub#lookuptype-2-multiple-substitution-subtable
+                return readMultipleSubstitutionSubtable(data, offset);
+            case 3:
+                // Alternate Substitution Subtable
+                // https://learn.microsoft.com/en-us/typography/opentype/spec/gsub#lookuptype-3-alternate-substitution-subtable
+                return readAlternateSubstitutionSubtable(data, offset);
+            case 4:
+                // Ligature Substitution Subtable
+                // https://docs.microsoft.com/en-us/typography/opentype/spec/gsub#LS
+                return readLigatureSubstitutionSubtable(data, offset);
+
+                // when creating a new LookupSubTable derived type, don't forget to add a "switch"
+                // in readLookupTable() and add the type in GlyphSubstitutionDataExtractor.extractData()
+
+            default:
+                // Other lookup types are not supported
+                LOG.debug("Type {} GSUB lookup table is not supported and will be ignored",
+                            lookupType);
+                return null;
+                //TODO next: implement type 6
+                // https://learn.microsoft.com/en-us/typography/opentype/spec/gsub#lookuptype-6-chained-contexts-substitution-subtable
+                // see e.g. readChainedContextualSubTable in Apache FOP
+                // https://github.com/apache/xmlgraphics-fop/blob/1323c2e3511eb23c7dd9b8fb74463af707fa972d/fop-core/src/main/java/org/apache/fop/complexscripts/fonts/OTFAdvancedTypographicTableReader.java#L898
+        }
+    }
+
+    // https://learn.microsoft.com/en-us/typography/opentype/spec/chapter2#lookup-table
+    // scroll down to "Lookup table"
     private LookupTable readLookupTable(TTFDataStream data, long offset) throws IOException
     {
         data.seek(offset);
         int lookupType = data.readUnsignedShort();
         int lookupFlag = data.readUnsignedShort();
         int subTableCount = data.readUnsignedShort();
-        int[] subTableOffets = new int[subTableCount];
+        int[] subTableOffsets = new int[subTableCount];
         for (int i = 0; i < subTableCount; i++)
         {
-            subTableOffets[i] = data.readUnsignedShort();
+            subTableOffsets[i] = data.readUnsignedShort();
+            if (subTableOffsets[i] == 0)
+            {
+                LOG.error("subTableOffsets[{}] is 0 at offset {}", i,
+                        data.getCurrentPosition() - 2);
+            }
+            else if (offset + subTableOffsets[i] > data.getOriginalDataSize())
+            {
+                LOG.error("{} > {}", offset + subTableOffsets[i], data.getOriginalDataSize());
+            }
         }
 
         int markFilteringSet;
@@ -283,30 +370,51 @@ public class GlyphSubstitutionTable extends TTFTable
         switch (lookupType)
         {
         case 1:
-            // Single
-            // https://docs.microsoft.com/en-us/typography/opentype/spec/gsub#SS
+        case 2:
+        case 3:
+        case 4:
             for (int i = 0; i < subTableCount; i++)
             {
-                subTables[i] = readLookupSubTable(data, offset + subTableOffets[i]);
+                subTables[i] = readLookupSubtable(data, offset + subTableOffsets[i], lookupType);
             }
             break;
-        case 4:
-            // Ligature Substitution Subtable
-            // https://docs.microsoft.com/en-us/typography/opentype/spec/gsub#LS
+        case 7:
+            // Extension Substitution
+            // https://learn.microsoft.com/en-us/typography/opentype/spec/gsub#ES
             for (int i = 0; i < subTableCount; i++)
             {
-                subTables[i] = readLigatureSubstitutionSubtable(data, offset + subTableOffets[i]);
+                data.seek(offset + subTableOffsets[i]);
+                int substFormat = data.readUnsignedShort(); // always 1
+                if (substFormat != 1)
+                {
+                    LOG.error(
+                            "The expected SubstFormat for ExtensionSubstFormat1 subtable is {} but should be 1 at offset {}",
+                            substFormat, offset + subTableOffsets[i]);
+                    continue;
+                }
+                int extensionLookupType = data.readUnsignedShort();
+                if (lookupType != 7 && lookupType != extensionLookupType)
+                {
+                    // "If a lookup table uses extension subtables, then all of the extension
+                    //  subtables must have the same extensionLookupType"
+                    LOG.error("extensionLookupType changed from {} to {} at offset {}",
+                            lookupType, extensionLookupType, offset + subTableOffsets[i] + 2);
+                    continue;
+                }
+                lookupType = extensionLookupType;
+                long extensionOffset = data.readUnsignedInt();
+                long extensionLookupTableAddress = offset + subTableOffsets[i] + extensionOffset;
+                subTables[i] = readLookupSubtable(data, extensionLookupTableAddress, extensionLookupType);
             }
             break;
         default:
             // Other lookup types are not supported
-            LOG.debug("Type " + lookupType
-                    + " GSUB lookup table is not supported and will be ignored");
+            LOG.debug("Type {} GSUB lookup table is not supported and will be ignored", lookupType);
         }
         return new LookupTable(lookupType, lookupFlag, markFilteringSet, subTables);
     }
 
-    private LookupSubTable readLookupSubTable(TTFDataStream data, long offset) throws IOException
+    private LookupSubTable readSingleLookupSubTable(TTFDataStream data, long offset) throws IOException
     {
         data.seek(offset);
         int substFormat = data.readUnsignedShort();
@@ -336,8 +444,92 @@ public class GlyphSubstitutionTable extends TTFTable
             return new LookupTypeSingleSubstFormat2(substFormat, coverageTable, substituteGlyphIDs);
         }
         default:
-            throw new IOException("Unknown substFormat: " + substFormat);
+            LOG.warn("Unknown substFormat: {}", substFormat);
+            return null;
         }
+    }
+
+    private LookupSubTable readMultipleSubstitutionSubtable(TTFDataStream data, long offset)
+            throws IOException
+    {
+        data.seek(offset);
+        int substFormat = data.readUnsignedShort();
+
+        if (substFormat != 1)
+        {
+            throw new IOException(
+                    "The expected SubstFormat for LigatureSubstitutionTable is 1");
+        }
+
+        int coverage = data.readUnsignedShort();
+        int sequenceCount = data.readUnsignedShort();
+        int[] sequenceOffsets = new int[sequenceCount];
+        for (int i = 0; i < sequenceCount; i++)
+        {
+            sequenceOffsets[i] = data.readUnsignedShort();
+        }
+
+        CoverageTable coverageTable = readCoverageTable(data, offset + coverage);
+
+        if (sequenceCount != coverageTable.getSize())
+        {
+            throw new IOException(
+                    "According to the OpenTypeFont specifications, the coverage count should be equal to the no. of SequenceTables");
+        }
+
+        SequenceTable[] sequenceTables = new SequenceTable[sequenceCount];
+        for (int i = 0; i < sequenceCount; i++)
+        {
+            data.seek(offset + sequenceOffsets[i]);
+            int glyphCount = data.readUnsignedShort();
+            int[] substituteGlyphIDs = data.readUnsignedShortArray(glyphCount);
+            sequenceTables[i] = new SequenceTable(glyphCount, substituteGlyphIDs);
+        }
+
+        return new LookupTypeMultipleSubstitutionFormat1(substFormat, coverageTable, sequenceTables);
+    }
+
+    private LookupSubTable readAlternateSubstitutionSubtable(TTFDataStream data, long offset) throws IOException
+    {
+        data.seek(offset);
+        int substFormat = data.readUnsignedShort();
+
+        if (substFormat != 1)
+        {
+            throw new IOException(
+                    "The expected SubstFormat for AlternateSubstitutionTable is 1");
+        }
+
+        int coverage = data.readUnsignedShort();
+        int altSetCount = data.readUnsignedShort();
+
+        int[] alternateOffsets = new int[altSetCount];
+
+        for (int i = 0; i < altSetCount; i++)
+        {
+            alternateOffsets[i] = data.readUnsignedShort();
+        }
+
+        CoverageTable coverageTable = readCoverageTable(data, offset + coverage);
+
+        if (altSetCount != coverageTable.getSize())
+        {
+            throw new IOException(
+                    "According to the OpenTypeFont specifications, the coverage count should be equal to the no. of AlternateSetTable");
+        }
+
+        AlternateSetTable[] alternateSetTables = new AlternateSetTable[altSetCount];
+
+        for (int i = 0; i < altSetCount; i++)
+        {
+            data.seek(offset + alternateOffsets[i]);
+            int glyphCount = data.readUnsignedShort();
+            int[] alternateGlyphIDs = data.readUnsignedShortArray(glyphCount);
+            alternateSetTables[i] = new AlternateSetTable(glyphCount, alternateGlyphIDs);
+        }
+
+        return new LookupTypeAlternateSubstitutionFormat1(substFormat, coverageTable,
+                alternateSetTables);
     }
 
     private LookupSubTable readLigatureSubstitutionSubtable(TTFDataStream data, long offset)
@@ -391,7 +583,6 @@ public class GlyphSubstitutionTable extends TTFTable
         data.seek(ligatureSetTableLocation);
 
         int ligatureCount = data.readUnsignedShort();
-        LOG.debug("ligatureCount=" + ligatureCount);
 
         int[] ligatureOffsets = new int[ligatureCount];
         LigatureTable[] ligatureTables = new LigatureTable[ligatureCount];
@@ -419,6 +610,11 @@ public class GlyphSubstitutionTable extends TTFTable
         int ligatureGlyph = data.readUnsignedShort();
 
         int componentCount = data.readUnsignedShort();
+        if (componentCount > 100)
+        {
+            throw new IOException("componentCount in ligature table is " +
+                    componentCount + ", font likely corrupt");
+        }
 
         int[] componentGlyphIDs = new int[componentCount];
 
@@ -578,8 +774,7 @@ public class GlyphSubstitutionTable extends TTFTable
 
         if (enabledFeatures != null && result.size() > 1)
         {
-            result.sort((o1, o2) -> Integer.compare(enabledFeatures.indexOf(o1.getFeatureTag()),
-                                                    enabledFeatures.indexOf(o2.getFeatureTag())));
+            result.sort(Comparator.comparingInt(o -> enabledFeatures.indexOf(o.getFeatureTag())));
         }
 
         return result;
@@ -593,14 +788,7 @@ public class GlyphSubstitutionTable extends TTFTable
 
     private void removeFeature(List<FeatureRecord> featureRecords, String featureTag)
     {
-        Iterator<FeatureRecord> iter = featureRecords.iterator();
-        while (iter.hasNext())
-        {
-            if (iter.next().getFeatureTag().equals(featureTag))
-            {
-                iter.remove();
-            }
-        }
+        featureRecords.removeIf(featureRecord -> featureRecord.getFeatureTag().equals(featureTag));
     }
 
     private int applyFeature(FeatureRecord featureRecord, int gid)
@@ -611,9 +799,9 @@ public class GlyphSubstitutionTable extends TTFTable
             LookupTable lookupTable = lookupListTable.getLookups()[lookupListIndex];
             if (lookupTable.getLookupType() != 1)
             {
-                LOG.debug("Skipping GSUB feature '" + featureRecord.getFeatureTag()
-                        + "' because it requires unsupported lookup table type "
-                        + lookupTable.getLookupType());
+                LOG.warn(
+                        "Skipping GSUB feature '{}' because it requires unsupported lookup table type {}",
+                        featureRecord.getFeatureTag(), lookupTable.getLookupType());
                 continue;
             }
             lookupResult = doLookup(lookupTable, lookupResult);
@@ -635,17 +823,17 @@ public class GlyphSubstitutionTable extends TTFTable
     }
 
     /**
-     * Apply glyph substitutions to the supplied gid. The applicable substitutions are determined by
-     * the {@code scriptTags} which indicate the language of the gid, and by the list of
-     * {@code enabledFeatures}.
+     * Apply glyph substitutions to the supplied gid. The applicable substitutions are determined by the
+     * {@code scriptTags} which indicate the language of the gid, and by the list of {@code enabledFeatures}.
      *
-     * To ensure that a single gid isn't mapped to multiple substitutions, subsequent invocations
-     * with the same gid will return the same result as the first, regardless of script or enabled
-     * features.
+     * To ensure that a single gid isn't mapped to multiple substitutions, subsequent invocations with the same gid will
+     * return the same result as the first, regardless of script or enabled features.
      *
      * @param gid GID
      * @param scriptTags Script tags applicable to the gid (see {@link OpenTypeScript})
      * @param enabledFeatures list of features to apply
+     *
+     * @return the id of the glyph substitution
      */
     public int getSubstitution(int gid, String[] scriptTags, List<String> enabledFeatures)
     {
@@ -657,7 +845,7 @@ public class GlyphSubstitutionTable extends TTFTable
         if (cached != null)
         {
             // Because script detection for indeterminate scripts (COMMON, INHERIT, etc.) depends on context,
-            // it is possible to return a different substitution for the same input. However we don't want that,
+            // it is possible to return a different substitution for the same input. However, we don't want that,
             // as we need a one-to-one mapping.
             return cached;
         }
@@ -675,28 +863,69 @@ public class GlyphSubstitutionTable extends TTFTable
     }
 
     /**
-     * For a substitute-gid (obtained from {@link #getSubstitution(int, String[], List)}), retrieve
-     * the original gid.
-     *
-     * Only gids previously substituted by this instance can be un-substituted. If you are trying to
-     * unsubstitute before you substitute, something is wrong.
+     * For a substitute-gid (obtained from {@link #getSubstitution(int, String[], List)}),
+     * retrieve the original gid.
+     * <p>
+     * Only gids previously substituted by this instance can be un-substituted.
+     * If you are trying to unsubstitute before you substitute, something is wrong.
      *
      * @param sgid Substitute GID
+     *
+     * @return the original gid of a substitute-gid
      */
     public int getUnsubstitution(int sgid)
     {
         Integer gid = reverseLookup.get(sgid);
         if (gid == null)
         {
-            LOG.warn("Trying to un-substitute a never-before-seen gid: " + sgid);
+            LOG.warn("Trying to un-substitute a never-before-seen gid: {}", sgid);
             return sgid;
         }
         return gid;
     }
 
+    /**
+     * Returns a GsubData instance containing all scripts of the table.
+     *
+     * @return the GsubData instance representing the table
+     */
     public GsubData getGsubData()
     {
         return gsubData;
+    }
+
+    /**
+     * Builds a new {@link GsubData} instance for given script tag. In contrast to neighbour {@link #getGsubData()}
+     * method, this one does not try to find the first supported language and load GSUB data for it. Instead, it fetches
+     * the data for the given {@code scriptTag} (if it's supported by the font) leaving the language unspecified. It
+     * means that even after successful reading of GSUB data, the actual glyph substitution may not work if there is no
+     * corresponding {@link org.apache.fontbox.ttf.gsub.GsubWorker} implementation for it.
+     *
+     * Note: This method performs searching on every invocation (no results are cached)
+     *
+     * @param scriptTag a <a href="https://learn.microsoft.com/en-us/typography/opentype/spec/scripttags">script tag</a>
+     * for which the data is needed
+     * @return GSUB data for the given script or {@code null} if no such script in the font
+     */
+    public GsubData getGsubData(String scriptTag)
+    {
+        ScriptTable scriptTable = scriptList.get(scriptTag);
+        if (scriptTable == null)
+        {
+            return null;
+        }
+        return new GlyphSubstitutionDataExtractor().getGsubData(scriptTag, scriptTable,
+                featureListTable, lookupListTable);
+    }
+
+    /**
+     * @return a read-only view of the
+     * <a href="https://learn.microsoft.com/en-us/typography/opentype/spec/scripttags">script tags</a> for which this
+     * GSUB table has records
+     */
+    public Set<String> getSupportedScriptTags()
+    {
+        return Collections.unmodifiableSet(scriptList.keySet());
     }
 
     private RangeRecord readRangeRecord(TTFDataStream data) throws IOException

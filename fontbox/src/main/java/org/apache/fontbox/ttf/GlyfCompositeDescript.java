@@ -20,13 +20,13 @@ package org.apache.fontbox.ttf;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 /**
  * Glyph description for composite glyphs. Composite glyphs are made up of one
  * or more simple glyphs, usually with some sort of transformation applied to
@@ -40,7 +40,7 @@ public class GlyfCompositeDescript extends GlyfDescript
     /**
      * Log instance.
      */
-    private static final Log LOG = LogFactory.getLog(GlyfCompositeDescript.class);
+    private static final Logger LOG = LogManager.getLogger(GlyfCompositeDescript.class);
 
     private final List<GlyfCompositeComp> components = new ArrayList<>();
     private final Map<Integer,GlyphDescription> descriptions = new HashMap<>();
@@ -55,9 +55,10 @@ public class GlyfCompositeDescript extends GlyfDescript
      * 
      * @param bais the stream to be read
      * @param glyphTable the Glyphtable containing all glyphs
+     * @param level current level
      * @throws IOException is thrown if something went wrong
      */
-    GlyfCompositeDescript(TTFDataStream bais, GlyphTable glyphTable) throws IOException
+    GlyfCompositeDescript(TTFDataStream bais, GlyphTable glyphTable, int level) throws IOException
     {
         super((short) -1);
 
@@ -77,7 +78,7 @@ public class GlyfCompositeDescript extends GlyfDescript
         {
             readInstructions(bais, (bais.readUnsignedShort()));
         }
-        initDescriptions();
+        initDescriptions(level);
     }
 
     /**
@@ -208,7 +209,7 @@ public class GlyfCompositeDescript extends GlyfDescript
             GlyphDescription gd = descriptions.get(c.getGlyphIndex());
             if (gd == null)
             {
-                LOG.error("GlyphDescription for index " + c.getGlyphIndex() + " is null, returning 0");
+                LOG.error("GlyphDescription for index {} is null, returning 0", c.getGlyphIndex());
                 pointCount = 0;
             }
             else
@@ -235,7 +236,7 @@ public class GlyfCompositeDescript extends GlyfDescript
             GlyphDescription gd = descriptions.get(c.getGlyphIndex());
             if (gd == null)
             {
-                LOG.error("missing glyph description for index " + c.getGlyphIndex());
+                LOG.error("missing glyph description for index {}", c.getGlyphIndex());
                 contourCount = 0;
             }
             else
@@ -254,6 +255,16 @@ public class GlyfCompositeDescript extends GlyfDescript
     public int getComponentCount()
     {
         return components.size();
+    }
+
+    /**
+     * Gets a view to the composite components.
+     * 
+     * @return unmodifiable list of this composite glyph's {@linkplain GlyfCompositeComp components}
+     */
+    public List<GlyfCompositeComp> getComponents()
+    {
+        return Collections.unmodifiableList(components);
     }
 
     private GlyfCompositeComp getCompositeComp(int i)
@@ -282,14 +293,14 @@ public class GlyfCompositeDescript extends GlyfDescript
         return null;
     }
 
-    private void initDescriptions()
+    private void initDescriptions(int level)
     {
         for (GlyfCompositeComp component : components)
         {
             try
             {
                 int index = component.getGlyphIndex();
-                GlyphData glyph = glyphTable.getGlyph(index);
+                GlyphData glyph = glyphTable.getGlyph(index, level);
                 if (glyph != null)
                 {
                     descriptions.put(index, glyph.getDescription());

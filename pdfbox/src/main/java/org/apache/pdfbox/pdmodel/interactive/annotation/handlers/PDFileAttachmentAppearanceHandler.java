@@ -18,8 +18,8 @@ package org.apache.pdfbox.pdmodel.interactive.annotation.handlers;
 
 import java.io.IOException;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 import org.apache.pdfbox.pdmodel.PDAppearanceContentStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
@@ -32,7 +32,7 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationFileAttachme
  */
 public class PDFileAttachmentAppearanceHandler extends PDAbstractAppearanceHandler
 {
-    private static final Log LOG = LogFactory.getLog(PDFileAttachmentAppearanceHandler.class);
+    private static final Logger LOG = LogManager.getLogger(PDFileAttachmentAppearanceHandler.class);
 
     public PDFileAttachmentAppearanceHandler(PDAnnotation annotation)
     {
@@ -48,14 +48,17 @@ public class PDFileAttachmentAppearanceHandler extends PDAbstractAppearanceHandl
     public void generateNormalAppearance()
     {
         PDAnnotationFileAttachment annotation = (PDAnnotationFileAttachment) getAnnotation();
-
+        PDRectangle rect = getRectangle();
+        if (rect == null)
+        {
+            return;
+        }
         try (PDAppearanceContentStream contentStream = getNormalAppearanceAsContentStream())
         {
             setOpacity(contentStream, annotation.getConstantOpacity());
 
             // minimum code of PDTextAppearanceHandler.adjustRectAndBBox() 
             int size = 18;
-            PDRectangle rect = getRectangle();
             rect.setUpperRightX(rect.getLowerLeftX() + size);
             rect.setLowerLeftY(rect.getUpperRightY() - size);
             annotation.setRectangle(rect);
@@ -72,7 +75,7 @@ public class PDFileAttachmentAppearanceHandler extends PDAbstractAppearanceHandl
 
     /**
      * Draw a paperclip. Shape is from
-     * <a href="https://raw.githubusercontent.com/Iconscout/unicons/master/svg/line/paperclip.svg>Iconscout</a>
+     * <a href="https://raw.githubusercontent.com/Iconscout/unicons/master/svg/line/paperclip.svg">Iconscout</a>
      * (Apache licensed).
      *
      * @param contentStream

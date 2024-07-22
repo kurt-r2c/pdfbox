@@ -64,7 +64,7 @@ public final class DomHelper
     /**
      * Return the first child element of the element parameter. If there is no child, null is returned
      * 
-     * @param description
+     * @param description the parent element
      * @return the first child element. Might be null.
      */
     public static Element getFirstChildElement(Element description)
@@ -96,6 +96,11 @@ public final class DomHelper
 
     public static QName getQName(Element element)
     {
+        if (element.getPrefix() == null)
+        {
+            // PDFBOX-5835
+            return new QName(element.getNamespaceURI(), element.getLocalName());
+        }
         return new QName(element.getNamespaceURI(), element.getLocalName(), element.getPrefix());
     }
 

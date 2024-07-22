@@ -36,7 +36,6 @@ public class ViewMenu extends MenuBase
     private static final String EXTRACT_TEXT = "Extract Text";            
     private static final String REPAIR_ACROFORM = "Repair AcroForm";
 
-    private JMenuItem viewModeItem;
     private JCheckBoxMenuItem showTextStripper;
     private JCheckBoxMenuItem showTextStripperBeads;
     private JCheckBoxMenuItem showFontBBox;
@@ -130,7 +129,7 @@ public class ViewMenu extends MenuBase
     /**
      * Tell whether the "Extract Text" menu entry was hit.
      *
-     * @param actionEvent
+     * @param actionEvent the action event
      * @return true if the "Extract Text" menu entry was hit.
      */
     public static boolean isExtractTextEvent(ActionEvent actionEvent)
@@ -151,7 +150,7 @@ public class ViewMenu extends MenuBase
     /**
      * Tell whether the "Repair AcroForm" menu entry was hit.
      *
-     * @param actionEvent
+     * @param actionEvent the action event
      * @return true if the "Repair AcroForm" menu entry was hit.
      */
     public static boolean isRepairAcroformEvent(ActionEvent actionEvent)
@@ -174,33 +173,18 @@ public class ViewMenu extends MenuBase
         JMenu viewMenu = new JMenu("View");
         viewMenu.setMnemonic('V');
         
-        if (pdfDebugger.isPageMode())
+        TreeViewMenu treeViewMenu = TreeViewMenu.getInstance();
+        treeViewMenu.setEnableMenu(false);
+        viewMenu.add(treeViewMenu.getMenu());
+        treeViewMenu.addMenuListeners(actionEvent ->
         {
-            viewModeItem = new JMenuItem("Show Internal Structure");
-        }
-        else
-        {
-            viewModeItem = new JMenuItem("Show Pages");
-        }
-        viewModeItem.addActionListener(actionEvent ->
-        {
-            if (pdfDebugger.isPageMode())
-            {
-                viewModeItem.setText("Show Pages");
-                pdfDebugger.setPageMode(false);
-            }
-            else
-            {
-                viewModeItem.setText("Show Internal Structure");
-                pdfDebugger.setPageMode(true);
-            }
+            pdfDebugger.setTreeViewMode(treeViewMenu.getTreeViewSelection());
             if (pdfDebugger.hasDocument())
             {
                 pdfDebugger.initTree();
             }
         });
-        viewMenu.add(viewModeItem);
-           
+
         ZoomMenu zoomMenu = ZoomMenu.getInstance();
         zoomMenu.setEnableMenu(false);
         viewMenu.add(zoomMenu.getMenu());

@@ -24,7 +24,6 @@ import java.io.OutputStream;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
@@ -199,10 +198,10 @@ public final class ExtractTTFFonts
             if (ff2Stream != null)
             {
                 System.out.println("Writing font: " + name);
-                try (OutputStream os = new FileOutputStream(new File(name + ".ttf"));
+                try (OutputStream os = new FileOutputStream(name + ".ttf");
                      InputStream is = ff2Stream.createInputStream())
                 {
-                    IOUtils.copy(is, os);
+                    is.transferTo(os);
                 }
             }
         }

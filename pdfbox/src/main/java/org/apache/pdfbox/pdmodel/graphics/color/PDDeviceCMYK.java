@@ -57,6 +57,8 @@ public class PDDeviceCMYK extends PDDeviceColorSpace
 
     /**
      * Lazy load the ICC profile, because it's slow.
+     * 
+     * @throws IOException if the ICC profile could not be initialized
      */
     protected void init() throws IOException
     {
@@ -96,10 +98,10 @@ public class PDDeviceCMYK extends PDDeviceColorSpace
     {
         // Adobe Acrobat uses "U.S. Web Coated (SWOP) v2" as the default
         // CMYK profile, however it is not available under an open license.
-        // Instead, the "ISO Coated v2 300% (basICColor)" is used, which
-        // is an open alternative to the "ISO Coated v2 300% (ECI)" profile.
-
-        String resourceName = "/org/apache/pdfbox/resources/icc/ISOcoated_v2_300_bas.icc";
+        // Instead, the "CGATS001Compat-v2-micro" is used, which is an open
+        // alternative to the "U.S. Web Coated (SWOP) v2" profile.
+        // https://github.com/saucecontrol/Compact-ICC-Profiles#cmyk
+        String resourceName = "/org/apache/pdfbox/resources/icc/CGATS001Compat-v2-micro.icc";
         InputStream resourceAsStream = PDDeviceCMYK.class.getResourceAsStream(resourceName);
         if (resourceAsStream == null)
         {
@@ -167,7 +169,7 @@ public class PDDeviceCMYK extends PDDeviceColorSpace
             ColorSpace destCS = dest.getColorModel().getColorSpace();
             WritableRaster destRaster = dest.getRaster();
             float[] srcValues = new float[4];
-            float[] lastValues = new float[] { -1.0f, -1.0f, -1.0f, -1.0f };
+            float[] lastValues = { -1.0f, -1.0f, -1.0f, -1.0f };
             float[] destValues = new float[3];
             int startX = raster.getMinX();
             int startY = raster.getMinY();

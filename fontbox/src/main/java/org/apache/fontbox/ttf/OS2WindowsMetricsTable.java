@@ -19,9 +19,8 @@ package org.apache.fontbox.ttf;
 import java.io.EOFException;
 import java.io.IOException;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 /**
  * The OS/2 and Windows Metrics Table in a TrueType font, see
  * <a href="https://docs.microsoft.com/en-us/typography/opentype/spec/os2">here</a>.
@@ -34,7 +33,7 @@ public class OS2WindowsMetricsTable extends TTFTable
     /**
      * Log instance.
      */
-    private static final Log LOG = LogFactory.getLog(OS2WindowsMetricsTable.class);
+    private static final Logger LOG = LogManager.getLogger(OS2WindowsMetricsTable.class);
 
     /**
      * Weight class constant.
@@ -743,6 +742,8 @@ public class OS2WindowsMetricsTable extends TTFTable
 
     /**
      * Returns the sxHeight.
+     * 
+     * @return the sxHeight value
      */
     public int getHeight()
     {
@@ -751,6 +752,8 @@ public class OS2WindowsMetricsTable extends TTFTable
 
     /**
      * Returns the sCapHeight.
+     * 
+     * @return the sCapHeight value
      */
     public int getCapHeight()
     {
@@ -759,6 +762,8 @@ public class OS2WindowsMetricsTable extends TTFTable
 
     /**
      * Returns the usDefaultChar.
+     * 
+     * @return the usDefaultChar value
      */
     public int getDefaultChar()
     {
@@ -767,6 +772,8 @@ public class OS2WindowsMetricsTable extends TTFTable
 
     /**
      * Returns the usBreakChar.
+     * 
+     * @return the usBreakChar value
      */
     public int getBreakChar()
     {
@@ -775,6 +782,8 @@ public class OS2WindowsMetricsTable extends TTFTable
 
     /**
      * Returns the usMaxContext.
+     * 
+     * @return the usMaxContent value
      */
     public int getMaxContext()
     {

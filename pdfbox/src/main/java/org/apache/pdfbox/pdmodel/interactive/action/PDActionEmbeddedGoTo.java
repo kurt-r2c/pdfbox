@@ -85,7 +85,7 @@ public class PDActionEmbeddedGoTo extends PDAction
         {
             PDPageDestination pageDest = (PDPageDestination) d;
             COSArray destArray = pageDest.getCOSObject();
-            if (destArray.size() >= 1)
+            if (!destArray.isEmpty())
             {
                 COSBase page = destArray.getObject(0);
                 if (!(page instanceof COSInteger))
@@ -179,7 +179,7 @@ public class PDActionEmbeddedGoTo extends PDAction
     /**
      * Sets the target directory.
      * 
-     * @param targetDirectory
+     * @param targetDirectory the target directory
      */
     public void setTargetDirectory(PDTargetDirectory targetDirectory)
     {

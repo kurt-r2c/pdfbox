@@ -20,9 +20,12 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Provides random access to portions of a file combined with buffered reading of content. Start of next bytes to read
@@ -39,11 +42,14 @@ public class RandomAccessReadBufferedFile implements RandomAccessRead
     private static final long PAGE_OFFSET_MASK = -1L << PAGE_SIZE_SHIFT;
     private static final int MAX_CACHED_PAGES = 1000;
 
+    // map holding all copies of the current buffered file
+    private final ConcurrentMap<Long, RandomAccessReadBufferedFile> rafCopies = new ConcurrentHashMap<>();
+
     private ByteBuffer lastRemovedCachePage = null;
 
     /** Create a LRU page cache. */
-    private final Map<Long, ByteBuffer> pageCache = new LinkedHashMap<Long, ByteBuffer>(
-            MAX_CACHED_PAGES, 0.75f, true)
+    private final Map<Long, ByteBuffer> pageCache = new LinkedHashMap<>(MAX_CACHED_PAGES, 0.75f,
+            true)
     {
         private static final long serialVersionUID = -6302488539257741101L;
 
@@ -65,7 +71,7 @@ public class RandomAccessReadBufferedFile implements RandomAccessRead
     private int offsetWithinPage = 0;
 
     private final FileChannel fileChannel;
-    private final File file;
+    private final Path path;
     private final long fileLength;
     private long fileOffset = 0;
     private boolean isClosed;
@@ -89,9 +95,20 @@ public class RandomAccessReadBufferedFile implements RandomAccessRead
      */
     public RandomAccessReadBufferedFile( File file ) throws IOException 
     {
-        this.file = file;
-        fileChannel = FileChannel.open(file.toPath(), StandardOpenOption.READ);
-        fileLength = file.length();
+        this(file.toPath());
+    }
+
+    /**
+     * Create a random access buffered file instance using the given path.
+     *
+     * @param path path of the file to be read.
+     * @throws IOException if something went wrong while accessing the given file.
+     */
+    public RandomAccessReadBufferedFile(Path path) throws IOException
+    {
+        this.path = path;
+        fileChannel = FileChannel.open(path, StandardOpenOption.READ);
+        fileLength = fileChannel.size();
         seek(0);
     }
 
@@ -225,6 +242,8 @@ public class RandomAccessReadBufferedFile implements RandomAccessRead
     @Override
     public void close() throws IOException
     {
+        rafCopies.values().forEach(IOUtils::closeQuietly);
+        rafCopies.clear();
         fileChannel.close();
         pageCache.clear();
         isClosed = true;
@@ -258,7 +277,14 @@ public class RandomAccessReadBufferedFile implements RandomAccessRead
     public RandomAccessReadView createView(long startPosition, long streamLength) throws IOException
     {
         checkClosed();
-        return new RandomAccessReadView(new RandomAccessReadBufferedFile(file), startPosition,
-                streamLength, true);
+        Long currentThreadID = Thread.currentThread().getId();
+        RandomAccessReadBufferedFile randomAccessReadBufferedFile = rafCopies.get(currentThreadID);
+        if (randomAccessReadBufferedFile == null || randomAccessReadBufferedFile.isClosed())
+        {
+            randomAccessReadBufferedFile = new RandomAccessReadBufferedFile(path);
+            rafCopies.put(currentThreadID, randomAccessReadBufferedFile);
+        }
+        return new RandomAccessReadView(randomAccessReadBufferedFile, startPosition, streamLength);
     }
+
 }

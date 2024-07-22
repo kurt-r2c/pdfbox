@@ -24,8 +24,8 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 import org.apache.fontbox.util.BoundingBox;
 import org.apache.pdfbox.cos.COSArray;
@@ -53,7 +53,7 @@ import org.apache.pdfbox.util.Matrix;
  */
 public class LayerUtility
 {
-    private static final Log LOG = LogFactory.getLog(LayerUtility.class);
+    private static final Logger LOG = LogManager.getLogger(LayerUtility.class);
 
     private static final boolean DEBUG = true;
 
@@ -62,12 +62,12 @@ public class LayerUtility
 
     /**
      * Creates a new instance.
-     * @param document the PDF document to modify
+     * @param targetDoc the PDF document to modify
      */
-    public LayerUtility(PDDocument document)
+    public LayerUtility(PDDocument targetDoc)
     {
-        this.targetDoc = document;
-        this.cloner = new PDFCloneUtility(document);
+        this.targetDoc = targetDoc;
+        this.cloner = new PDFCloneUtility(targetDoc);
     }
 
     /**
@@ -108,10 +108,11 @@ public class LayerUtility
         {
             COSStream contentsStream = (COSStream)contents;
 
-            COSArray array = new COSArray();
-            array.add(saveGraphicsStateStream);
-            array.add(contentsStream);
-            array.add(restoreGraphicsStateStream);
+            COSArray array = new COSArray(Arrays.asList(
+                saveGraphicsStateStream,
+                contentsStream,
+                restoreGraphicsStateStream
+            ));
 
             pageDictionary.setItem(COSName.CONTENTS, array);
         }
@@ -136,7 +137,7 @@ public class LayerUtility
      * make sure that the graphics state is reset.
      * 
      * @param sourceDoc the source PDF document that contains the page to be copied
-     * @param pageNumber the page number of the page to be copied
+     * @param pageNumber the 0-based page number of the page to be copied
      * @return a Form XObject containing the original page's content
      * @throws IOException if an I/O error occurs
      */
@@ -264,8 +265,8 @@ public class LayerUtility
         if ((cropBox.getLowerLeftX() < 0 || cropBox.getLowerLeftY() < 0) && transform.isIdentity())
         {
             // PDFBOX-4044 
-            LOG.warn("Negative cropBox " + cropBox + 
-                     " and identity transform may make your form invisible");
+            LOG.warn("Negative cropBox {} and identity transform may make your form invisible",
+                    cropBox);
         }
 
         PDOptionalContentGroup layer = new PDOptionalContentGroup(layerName);

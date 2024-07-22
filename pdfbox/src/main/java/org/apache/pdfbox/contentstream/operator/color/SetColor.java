@@ -19,6 +19,7 @@ package org.apache.pdfbox.contentstream.operator.color;
 import java.io.IOException;
 import java.util.List;
 
+import org.apache.pdfbox.contentstream.PDFStreamEngine;
 import org.apache.pdfbox.contentstream.operator.MissingOperandException;
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.contentstream.operator.OperatorProcessor;
@@ -36,6 +37,11 @@ import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
  */
 public abstract class SetColor extends OperatorProcessor
 {
+    protected SetColor(PDFStreamEngine context)
+    {
+        super(context);
+    }
+
     @Override
     public void process(Operator operator, List<COSBase> arguments) throws IOException
     {
@@ -48,11 +54,13 @@ public abstract class SetColor extends OperatorProcessor
             }
             if (!checkArrayTypesClass(arguments, COSNumber.class))
             {
+                // PDFBOX-5851: set an invalid color because Pattern colorspace is missing
+                // this will produce transparency in PageDrawer
+                setColor(new PDColor(new float[0], null));
                 return;
             }
         }
-        COSArray array = new COSArray();
-        array.addAll(arguments);
+        COSArray array = new COSArray(arguments);
         setColor(new PDColor(array, colorSpace));
     }
 

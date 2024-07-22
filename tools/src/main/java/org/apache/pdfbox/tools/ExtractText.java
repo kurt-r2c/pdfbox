@@ -21,6 +21,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintStream;
+import java.io.PrintWriter;
 import java.io.Writer;
 import java.util.Map;
 import java.util.Set;
@@ -28,8 +29,8 @@ import java.util.TreeSet;
 import java.util.concurrent.Callable;
 
 import org.apache.commons.io.FilenameUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSName;
@@ -61,15 +62,15 @@ import picocli.CommandLine.Option;
 @Command(name = "extracttext", header = "Extracts the text from a PDF document", versionProvider = Version.class, mixinStandardHelpOptions = true)
 public final class ExtractText  implements Callable<Integer>
 {
-    private static final Log LOG = LogFactory.getLog(ExtractText.class);
+    private static final Logger LOG = LogManager.getLogger(ExtractText.class);
 
     private static final String STD_ENCODING = "UTF-8";
 
     // Expected for CLI app to write to System.out/System.err
     @SuppressWarnings("squid:S106")
-    private static final PrintStream SYSOUT = System.out;
+    private final PrintStream SYSOUT;
     @SuppressWarnings("squid:S106")
-    private static final PrintStream SYSERR = System.err;
+    private final PrintStream SYSERR;
 
     @Option(names = "-alwaysNext", description = "Process next page (if applicable) despite IOException " + 
         "(ignored when -html)")
@@ -112,6 +113,21 @@ public final class ExtractText  implements Callable<Integer>
     @Option(names = {"-o", "--output"}, description = "the exported text file")
     private File outfile;
 
+    @Option(names = "-addFileName", description = "Print PDF file name to the output text")
+    private boolean addFileName = false;
+
+    @Option(names = "-append", description = "Use append mode for output file")
+    private boolean append = false;
+
+    /**
+     * Constructor.
+     */
+    public ExtractText()
+    {
+        SYSOUT = System.out;
+        SYSERR = System.err;
+    }
+
     /**
      * Infamous main method.
      *
@@ -141,8 +157,19 @@ public final class ExtractText  implements Callable<Integer>
             outfile = new File(outPath);
         }
 
+        if (toHTML && !STD_ENCODING.equals(encoding))
+        {
+            encoding = STD_ENCODING;
+            SYSOUT.println("The encoding parameter is ignored when writing html output.");
+        }
+
+        if (toConsole && encoding != null)
+        {
+            SYSOUT.println("The encoding parameter is ignored when writing to the console.");
+        }
+
         try (PDDocument document = Loader.loadPDF(infile, password);
-             Writer output = toConsole ? new OutputStreamWriter( SYSOUT, encoding ) : new OutputStreamWriter( new FileOutputStream( outfile ), encoding ))
+                Writer output = createOutputWriter())
         {
             long startTime = startProcessing("Loading PDF " + infile);
 
@@ -155,13 +182,13 @@ public final class ExtractText  implements Callable<Integer>
             
             stopProcessing("Time for loading: ", startTime);
 
-            if (toHTML && !STD_ENCODING.equals(encoding))
-            {
-                encoding = STD_ENCODING;
-                SYSOUT.println("The encoding parameter is ignored when writing html output.");
-            }
-
             startTime = startProcessing("Starting text extraction");
+
+            if (addFileName)
+            {
+                output.write("PDF file: " + infile);
+                output.write(System.lineSeparator());
+            }
 
             if (debug)
             {
@@ -243,6 +270,7 @@ public final class ExtractText  implements Callable<Integer>
                     }
                 }
             }
+            output.flush();
             stopProcessing("Time for extraction: ", startTime);
         }
         catch (IOException ioe)
@@ -252,6 +280,25 @@ public final class ExtractText  implements Callable<Integer>
         }
 
         return 0;
+    }
+
+    private Writer createOutputWriter() throws IOException
+    {
+        if (toConsole)
+        {
+            return new PrintWriter(SYSOUT)
+            {
+                @Override
+                public void close()
+                {
+                    // don't close the console
+                }
+            };
+        }
+        else
+        {
+            return new OutputStreamWriter(new FileOutputStream(outfile, append), encoding);
+        }
     }
 
     private void extractPages(int startPage, int endPage,

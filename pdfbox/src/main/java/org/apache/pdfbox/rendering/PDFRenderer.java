@@ -24,10 +24,6 @@ import java.awt.GraphicsDevice;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -48,8 +44,6 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.AnnotationFilter;
  */
 public class PDFRenderer
 {
-    private static final Log LOG = LogFactory.getLog(PDFRenderer.class);
-
     protected final PDDocument document;
     // TODO keep rendering state such as caches here
     
@@ -66,8 +60,6 @@ public class PDFRenderer
 
     private BufferedImage pageImage;
 
-    private static boolean kcmsLogged = false;
-
     private float imageDownscalingOptimizationThreshold = 0.5f;
 
     private final PDPageTree pageTree;
@@ -80,12 +72,6 @@ public class PDFRenderer
     {
         this.document = document;
         this.pageTree = document.getPages();
-
-        if (!kcmsLogged)
-        {
-            suggestKCMS();
-            kcmsLogged = true;
-        }
     }
 
     /**
@@ -165,11 +151,10 @@ public class PDFRenderer
     }
 
     /**
-     * Set the rendering hints. Use this to influence rendering quality and speed. If you don't set
-     * them yourself or pass null, PDFBox will decide <b><u>at runtime</u></b> depending on the
-     * destination.
+     * Set the rendering hints. Use this to influence rendering quality and speed. If you don't set them yourself or
+     * pass null, PDFBox will decide <b><u>at runtime</u></b> depending on the destination.
      *
-     * @param renderingHints
+     * @param renderingHints rendering hints to be used to influence rendering quality and speed
      */
     public void setRenderingHints(RenderingHints renderingHints)
     {
@@ -187,12 +172,11 @@ public class PDFRenderer
     }
 
     /**
-     * Set the image downscaling optimization threshold. This must be a value between 0 and 1. When
-     * rendering downscaled images and rendering hints are set to bicubic+quality and the scaling is
-     * smaller than the threshold, a more quality-optimized but slower method will be used. The
-     * default is 0.5 which is a good compromise.
+     * Set the image downscaling optimization threshold. This must be a value between 0 and 1. When rendering downscaled
+     * images and rendering hints are set to bicubic+quality and the scaling is smaller than the threshold, a more
+     * quality-optimized but slower method will be used. The default is 0.5 which is a good compromise.
      *
-     * @param imageDownscalingOptimizationThreshold
+     * @param imageDownscalingOptimizationThreshold image downscaling optimization threshold
      */
     public void setImageDownscalingOptimizationThreshold(float imageDownscalingOptimizationThreshold)
     {
@@ -533,6 +517,11 @@ public class PDFRenderer
 
     /**
      * Returns a new PageDrawer instance, using the given parameters. May be overridden.
+     * 
+     * @param parameters parameters to be used when creating the PageDrawer instance
+     * @return a new PageDrawer instance
+     * 
+     * @throws IOException id the PageDrawer instance could not be created
      */
     protected PageDrawer createPageDrawer(PageDrawerParameters parameters) throws IOException
     {
@@ -576,56 +565,4 @@ public class PDFRenderer
         return pageImage;
     }
 
-    private static void suggestKCMS()
-    {
-        String cmmProperty = System.getProperty("sun.java2d.cmm");
-        if (!"sun.java2d.cmm.kcms.KcmsServiceProvider".equals(cmmProperty))
-        {
-            try
-            {
-                // Make sure that class exists
-                Class.forName("sun.java2d.cmm.kcms.KcmsServiceProvider");
-
-                String version = System.getProperty("java.version");
-                if (version == null ||
-                    isGoodVersion(version, "1.8.0_(\\d+)", 191) ||
-                    isGoodVersion(version, "9.0.(\\d+)", 4))
-                {
-                    return;
-                }
-                LOG.info("Your current java version is: " + version);
-                LOG.info("To get higher rendering speed on old java 1.8 or 9 versions,");
-                LOG.info("  update to the latest 1.8 or 9 version (>= 1.8.0_191 or >= 9.0.4),");
-                LOG.info("  or");
-                LOG.info("  use the option -Dsun.java2d.cmm=sun.java2d.cmm.kcms.KcmsServiceProvider");
-                LOG.info("  or call System.setProperty(\"sun.java2d.cmm\", \"sun.java2d.cmm.kcms.KcmsServiceProvider\")");
-            }
-            catch (ClassNotFoundException e)
-            {
-                // KCMS not available
-            }
-        }
-    }
-
-    private static boolean isGoodVersion(String version, String regex, int min)
-    {
-        Matcher matcher = Pattern.compile(regex).matcher(version);
-        if (matcher.matches() && matcher.groupCount() >= 1)
-        {
-            try
-            {
-                int v = Integer.parseInt(matcher.group(1));
-                if (v >= min)
-                {
-                    // LCMS no longer bad
-                    return true;
-                }
-            }
-            catch (NumberFormatException ex)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
 }

@@ -19,6 +19,8 @@ package org.apache.pdfbox.pdmodel.common;
 import java.awt.geom.GeneralPath;
 import java.awt.geom.Point2D;
 import java.util.Arrays;
+import java.util.List;
+
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSFloat;
@@ -44,7 +46,11 @@ public class PDRectangle implements COSObjectable
     /** An immutable rectangle the size of U.S. Letter, 8.5" x 11". */
     @SuppressWarnings("java:S2390") // see also https://jira.sonarsource.com/browse/SONARJAVA-3580
     public static final PDRectangle LETTER = new PDImmutableRectangle(8.5f * POINTS_PER_INCH,
-                                                             11f *POINTS_PER_INCH);
+                                                            11f *POINTS_PER_INCH);
+    /**  An immutable rectangle the size of U.S. Tabloid, 11" x 17". */
+    @SuppressWarnings("java:S2390")
+    public static final PDRectangle TABLOID = new PDImmutableRectangle(11f * POINTS_PER_INCH,
+                                                            17f * POINTS_PER_INCH);
     /**  An immutable rectangle the size of U.S. Legal, 8.5" x 14". */
     @SuppressWarnings("java:S2390")
     public static final PDRectangle LEGAL = new PDImmutableRectangle(8.5f * POINTS_PER_INCH,
@@ -110,11 +116,12 @@ public class PDRectangle implements COSObjectable
      */
     public PDRectangle( float x, float y, float width, float height )
     {
-        rectArray = new COSArray();
-        rectArray.add( new COSFloat( x ) );
-        rectArray.add( new COSFloat( y ) );
-        rectArray.add( new COSFloat( x + width ) );
-        rectArray.add( new COSFloat( y + height ) );
+        rectArray = new COSArray(List.of(
+            new COSFloat( x ),
+            new COSFloat( y ),
+            new COSFloat( x + width ),
+            new COSFloat( y + height )
+        ));
     }
 
     /**
@@ -124,11 +131,12 @@ public class PDRectangle implements COSObjectable
      */
     public PDRectangle( BoundingBox box )
     {
-        rectArray = new COSArray();
-        rectArray.add( new COSFloat( box.getLowerLeftX() ) );
-        rectArray.add( new COSFloat( box.getLowerLeftY() ) );
-        rectArray.add( new COSFloat( box.getUpperRightX() ) );
-        rectArray.add( new COSFloat( box.getUpperRightY() ) );
+        rectArray = new COSArray(List.of(
+            new COSFloat( box.getLowerLeftX() ),
+            new COSFloat( box.getLowerLeftY() ),
+            new COSFloat( box.getUpperRightX() ),
+            new COSFloat( box.getUpperRightY() )
+        ));
     }
 
     /**
@@ -139,12 +147,13 @@ public class PDRectangle implements COSObjectable
     public PDRectangle( COSArray array )
     {
         float[] values = Arrays.copyOf(array.toFloatArray(), 4);
-        rectArray = new COSArray();
-        // we have to start with the lower left corner
-        rectArray.add( new COSFloat( Math.min(values[0],values[2] )) );
-        rectArray.add( new COSFloat( Math.min(values[1],values[3] )) );
-        rectArray.add( new COSFloat( Math.max(values[0],values[2] )) );
-        rectArray.add( new COSFloat( Math.max(values[1],values[3] )) );
+        rectArray = new COSArray(List.of(
+            // we have to start with the lower left corner
+            new COSFloat( Math.min(values[0],values[2] )),
+            new COSFloat( Math.min(values[1],values[3] )),
+            new COSFloat( Math.max(values[0],values[2] )),
+            new COSFloat( Math.max(values[1],values[3] ))
+        ));
     }
 
     /**
@@ -293,8 +302,11 @@ public class PDRectangle implements COSObjectable
     }
 
     /**
-     * Returns a path which represents this rectangle having been transformed by the given matrix.
-     * Note that the resulting path need not be rectangular.
+     * Returns a path which represents this rectangle having been transformed by the given matrix. Note that the
+     * resulting path need not be rectangular.
+     * 
+     * @param matrix the matrix to be used for the transformation
+     * @return the transformed rectangle
      */
     public GeneralPath transform(Matrix matrix)
     {
@@ -329,8 +341,10 @@ public class PDRectangle implements COSObjectable
     }
 
     /**
-     * Returns a general path equivalent to this rectangle. This method avoids the problems
-     * caused by Rectangle2D not working well with -ve rectangles.
+     * Returns a general path equivalent to this rectangle. This method avoids the problems caused by Rectangle2D not
+     * working well with -ve rectangles.
+     * 
+     * @return a general path equivalent to this rectangle
      */
     public GeneralPath toGeneralPath()
     {

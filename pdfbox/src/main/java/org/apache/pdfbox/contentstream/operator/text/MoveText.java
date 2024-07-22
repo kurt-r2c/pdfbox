@@ -18,8 +18,9 @@ package org.apache.pdfbox.contentstream.operator.text;
 
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.pdfbox.contentstream.PDFStreamEngine;
 import org.apache.pdfbox.contentstream.operator.MissingOperandException;
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.contentstream.operator.OperatorName;
@@ -35,7 +36,12 @@ import org.apache.pdfbox.util.Matrix;
  */
 public class MoveText extends OperatorProcessor
 {
-    private static final Log LOG = LogFactory.getLog(MoveText.class);
+    private static final Logger LOG = LogManager.getLogger(MoveText.class);
+
+    public MoveText(PDFStreamEngine context)
+    {
+        super(context);
+    }
 
     @Override
     public void process(Operator operator, List<COSBase> arguments) throws MissingOperandException
@@ -44,10 +50,11 @@ public class MoveText extends OperatorProcessor
         {
             throw new MissingOperandException(operator, arguments);
         }
+        PDFStreamEngine context = getContext();
         Matrix textLineMatrix = context.getTextLineMatrix();
         if (textLineMatrix == null)
         {
-            LOG.warn("TextLineMatrix is null, " + getName() + " operator will be ignored");
+            LOG.warn("TextLineMatrix is null, {} operator will be ignored", getName());
             return;
         }        
         

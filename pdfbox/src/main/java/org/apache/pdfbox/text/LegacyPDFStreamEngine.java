@@ -21,8 +21,8 @@ import java.io.InputStream;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.fontbox.util.BoundingBox;
@@ -77,7 +77,7 @@ import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
  */
 class LegacyPDFStreamEngine extends PDFStreamEngine
 {
-    private static final Log LOG = LogFactory.getLog(LegacyPDFStreamEngine.class);
+    private static final Logger LOG = LogManager.getLogger(LegacyPDFStreamEngine.class);
 
     private int pageRotation;
     private PDRectangle pageSize;
@@ -105,28 +105,28 @@ class LegacyPDFStreamEngine extends PDFStreamEngine
      */
     LegacyPDFStreamEngine()
     {
-        addOperator(new BeginText());
-        addOperator(new Concatenate());
-        addOperator(new DrawObject()); // special text version
-        addOperator(new EndText());
-        addOperator(new SetGraphicsStateParameters());
-        addOperator(new Save());
-        addOperator(new Restore());
-        addOperator(new NextLine());
-        addOperator(new SetCharSpacing());
-        addOperator(new MoveText());
-        addOperator(new MoveTextSetLeading());
-        addOperator(new SetFontAndSize());
-        addOperator(new ShowText());
-        addOperator(new ShowTextAdjusted());
-        addOperator(new SetTextLeading());
-        addOperator(new SetMatrix());
-        addOperator(new SetTextRenderingMode());
-        addOperator(new SetTextRise());
-        addOperator(new SetWordSpacing());
-        addOperator(new SetTextHorizontalScaling());
-        addOperator(new ShowTextLine());
-        addOperator(new ShowTextLineAndSpace());
+        addOperator(new BeginText(this));
+        addOperator(new Concatenate(this));
+        addOperator(new DrawObject(this)); // special text version
+        addOperator(new EndText(this));
+        addOperator(new SetGraphicsStateParameters(this));
+        addOperator(new Save(this));
+        addOperator(new Restore(this));
+        addOperator(new NextLine(this));
+        addOperator(new SetCharSpacing(this));
+        addOperator(new MoveText(this));
+        addOperator(new MoveTextSetLeading(this));
+        addOperator(new SetFontAndSize(this));
+        addOperator(new ShowText(this));
+        addOperator(new ShowTextAdjusted(this));
+        addOperator(new SetTextLeading(this));
+        addOperator(new SetMatrix(this));
+        addOperator(new SetTextRenderingMode(this));
+        addOperator(new SetTextRise(this));
+        addOperator(new SetWordSpacing(this));
+        addOperator(new SetTextHorizontalScaling(this));
+        addOperator(new ShowTextLine(this));
+        addOperator(new ShowTextLineAndSpace(this));
     }
 
     /**
@@ -283,7 +283,7 @@ class LegacyPDFStreamEngine extends PDFStreamEngine
             if (font instanceof PDSimpleFont)
             {
                 char c = (char) code;
-                unicode = new String(new char[] { c });
+                unicode = String.valueOf(c);
             }
             else
             {

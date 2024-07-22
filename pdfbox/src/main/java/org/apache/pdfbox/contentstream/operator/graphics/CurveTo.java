@@ -19,8 +19,9 @@ package org.apache.pdfbox.contentstream.operator.graphics;
 import java.io.IOException;
 import java.util.List;
 import java.awt.geom.Point2D;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
 import org.apache.pdfbox.contentstream.operator.MissingOperandException;
 
 import org.apache.pdfbox.cos.COSBase;
@@ -35,8 +36,13 @@ import org.apache.pdfbox.contentstream.operator.OperatorName;
  */
 public class CurveTo extends GraphicsOperatorProcessor
 {
-    private static final Log LOG = LogFactory.getLog(CurveTo.class);
+    private static final Logger LOG = LogManager.getLogger(CurveTo.class);
     
+    public CurveTo(PDFGraphicsStreamEngine context)
+    {
+        super(context);
+    }
+
     @Override
     public void process(Operator operator, List<COSBase> operands) throws IOException
     {
@@ -55,13 +61,14 @@ public class CurveTo extends GraphicsOperatorProcessor
         COSNumber x3 = (COSNumber)operands.get(4);
         COSNumber y3 = (COSNumber)operands.get(5);
 
+        PDFGraphicsStreamEngine context = getGraphicsContext();
         Point2D.Float point1 = context.transformedPoint(x1.floatValue(), y1.floatValue());
         Point2D.Float point2 = context.transformedPoint(x2.floatValue(), y2.floatValue());
         Point2D.Float point3 = context.transformedPoint(x3.floatValue(), y3.floatValue());
 
         if (context.getCurrentPoint() == null)
         {
-            LOG.warn("curveTo (" + point3.x + "," + point3.y + ") without initial MoveTo");
+            LOG.warn("curveTo ({},{}) without initial MoveTo", point3.x, point3.y);
             context.moveTo(point3.x, point3.y);
         }
         else

@@ -43,6 +43,8 @@ import org.apache.pdfbox.cos.COSString;
  */
 public class PDFTreeCellRenderer extends DefaultTreeCellRenderer
 {
+    private static final long serialVersionUID = 6547078597109564198L;
+
     private static final ImageIcon ICON_ARRAY = new ImageIcon(getImageUrl("array"));
     private static final ImageIcon ICON_BOOLEAN = new ImageIcon(getImageUrl("boolean"));
     private static final ImageIcon ICON_DICT = new ImageIcon(getImageUrl("dict"));
@@ -109,14 +111,13 @@ public class PDFTreeCellRenderer extends DefaultTreeCellRenderer
             }
             
             String stringResult = key;
-            if (object instanceof String && ((String)object).length() > 0)
+            if (object instanceof String && !((String) object).isEmpty())
             {
                 stringResult += ":  " + object;
                 if (item instanceof COSObject)
                 {
                     COSObject indirect = (COSObject)item;
-                    stringResult += " [" + indirect.getObjectNumber() + " " +
-                                           indirect.getGenerationNumber() + " R]";
+                    stringResult += " [" + indirect.getKey() + "]";
                 }
                 stringResult += toTreePostfix(value);
                 
@@ -178,6 +179,14 @@ public class PDFTreeCellRenderer extends DefaultTreeCellRenderer
         {
             result = nodeValue.toString();
         }
+        else if (nodeValue instanceof XrefEntries)
+        {
+            result = nodeValue.toString();
+        }
+        else if (nodeValue instanceof XrefEntry)
+        {
+            result = nodeValue.toString();
+        }
         return result;
     }
 
@@ -219,6 +228,15 @@ public class PDFTreeCellRenderer extends DefaultTreeCellRenderer
                     sb.append("  /S:").append(subtype.getName());
                 }
             }
+
+            if (dict.containsKey(COSName.S))
+            {
+                COSName subtype = dict.getCOSName(COSName.S);
+                if (subtype != null)
+                {
+                    sb.append("  /S:").append(subtype.getName());
+                }
+            }
             return sb.toString();
         }
         else
@@ -251,6 +269,10 @@ public class PDFTreeCellRenderer extends DefaultTreeCellRenderer
                 isStream = entry.getValue() instanceof COSStream;
             }
         }
+        else if (nodeValue instanceof XrefEntry)
+        {
+            isIndirect = true;
+        }
         
         if (isIndirect && !isStream)
         {
@@ -267,6 +289,10 @@ public class PDFTreeCellRenderer extends DefaultTreeCellRenderer
         {
             MapEntry entry = (MapEntry) nodeValue;
             return lookupIcon(entry.getValue());
+        }
+        if (nodeValue instanceof XrefEntry)
+        {
+            return ICON_INDIRECT;
         }
         else if (nodeValue instanceof ArrayEntry)
         {
@@ -326,6 +352,10 @@ public class PDFTreeCellRenderer extends DefaultTreeCellRenderer
         {
             return ICON_PAGE;
         }
+        else if (nodeValue instanceof COSObject)
+        {
+            return ICON_DICT;
+        }
         else
         {
             return null;
@@ -337,6 +367,8 @@ public class PDFTreeCellRenderer extends DefaultTreeCellRenderer
      */
     private static class OverlayIcon extends ImageIcon
     {
+        private static final long serialVersionUID = 1343672579481297481L;
+
         private final ImageIcon base;
         private final List<ImageIcon> overlays;
 

@@ -123,9 +123,7 @@ public class PDAnnotationPolygon extends PDAnnotationMarkup
      */
     public void setVertices(float[] points)
     {
-        COSArray ar = new COSArray();
-        ar.setFloatArray(points);
-        getCOSObject().setItem(COSName.VERTICES, ar);
+        getCOSObject().setItem(COSName.VERTICES, COSArray.of(points));
     }
 
     /**
@@ -161,7 +159,7 @@ public class PDAnnotationPolygon extends PDAnnotationMarkup
     /**
      * Set a custom appearance handler for generating the annotations appearance streams.
      * 
-     * @param appearanceHandler
+     * @param appearanceHandler custom appearance handler
      */
     public void setCustomAppearanceHandler(PDAppearanceHandler appearanceHandler)
     {

@@ -25,16 +25,15 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.function.BiConsumer;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
-import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.pdmodel.common.COSObjectable;
 import org.apache.pdfbox.util.DateConverter;
-import org.apache.pdfbox.util.SmallMap;
 
 /**
  * This class represents a dictionary where name/value pairs reside.
@@ -48,15 +47,14 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
     /**
      * Log instance.
      */
-    private static final Log LOG = LogFactory.getLog(COSDictionary.class);
+    private static final Logger LOG = LogManager.getLogger(COSDictionary.class);
 
     private static final String PATH_SEPARATOR = "/";
-    private static final int MAP_THRESHOLD = 1000;
 
     /**
      * The name-value pairs of this dictionary. The pairs are kept in the order they were added to the dictionary.
      */
-    protected Map<COSName, COSBase> items = new SmallMap<>();
+    protected Map<COSName, COSBase> items = new LinkedHashMap<>();
     private final COSUpdateState updateState;
 
     /**
@@ -205,10 +203,6 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
         }
         else
         {
-            if (items instanceof SmallMap && items.size() >= MAP_THRESHOLD)
-            {
-                items = new LinkedHashMap<>(items);
-            }
             items.put(key, value);
             getUpdateState().update(value);
         }
@@ -1232,10 +1226,10 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
     }
 
     /**
-     * Convenience method that calls
-     * {@link Map#forEach(java.util.function.BiConsumer) Map.forEach(BiConsumer)}.
+     * Convenience method that calls {@link Map#forEach(java.util.function.BiConsumer) Map.forEach(BiConsumer)}.
      *
-     * @param action
+     * @param action The action to be performed for each entry
+     * 
      */
     public void forEach(BiConsumer<? super COSName, ? super COSBase> action)
     {
@@ -1272,10 +1266,6 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
      */
     public void addAll(COSDictionary dict)
     {
-        if (items instanceof SmallMap && items.size() + dict.items.size() >= MAP_THRESHOLD)
-        {
-            items = new LinkedHashMap<>(items);
-        }
         items.putAll(dict.items);
     }
 
@@ -1363,11 +1353,11 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
         if (objs.contains(base))
         {
             // avoid endless recursion
-            return String.valueOf(base.hashCode());
+            return "hash:" + base.hashCode();
         }
-        objs.add(base);
         if (base instanceof COSDictionary)
         {
+            objs.add(base);
             StringBuilder sb = new StringBuilder("COSDictionary{");
             for (Map.Entry<COSName, COSBase> x : ((COSDictionary) base).entrySet())
             {
@@ -1381,7 +1371,7 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
             {
                 try (InputStream stream = ((COSStream) base).createRawInputStream())
                 {
-                    byte[] b = IOUtils.toByteArray(stream);
+                    byte[] b = stream.readAllBytes();
                     sb.append("COSStream{").append(Arrays.hashCode(b)).append("}");
                 }
             }
@@ -1389,6 +1379,7 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
         }
         if (base instanceof COSArray)
         {
+            objs.add(base);
             StringBuilder sb = new StringBuilder("COSArray{");
             for (COSBase x : (COSArray) base)
             {
@@ -1400,6 +1391,7 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
         }
         if (base instanceof COSObject)
         {
+            objs.add(base);
             COSObject obj = (COSObject) base;
             return "COSObject{"
                     + getDictionaryString(
@@ -1427,40 +1419,57 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
      * 
      * Expert use only. You might run into an endless recursion if choosing a wrong starting point.
      * 
-     * @param indirectObjects a list of already found indirect objects.
+     * @param indirectObjects a collection of already found indirect objects.
      * 
      */
-    public void getIndirectObjectKeys(List<COSObjectKey> indirectObjects)
+    public void getIndirectObjectKeys(Collection<COSObjectKey> indirectObjects)
     {
-        // avoid endless recursions
-        if (indirectObjects == null || (getKey() != null && indirectObjects.contains(getKey())))
+        if (indirectObjects == null)
         {
             return;
         }
-        for (COSBase cosBase : items.values())
+        COSObjectKey key = getKey();
+        if (key != null)
         {
-            COSDictionary dictionary = null;
+            // avoid endless recursions
+            if (indirectObjects.contains(key))
+            {
+                return;
+            }
+            else
+            {
+                indirectObjects.add(key);
+            }
+        }
+        for (Entry<COSName, COSBase> entry : items.entrySet())
+        {
+            COSBase cosBase = entry.getValue();
+            COSObjectKey cosBaseKey = cosBase != null ? cosBase.getKey() : null;
+            // avoid endless recursions
+            if (COSName.PARENT.equals(entry.getKey())
+                    || (cosBaseKey != null && indirectObjects.contains(cosBaseKey)))
+            {
+                continue;
+            }
             if (cosBase instanceof COSObject)
             {
-                // add indirect object key and dereference object
-                if (cosBase.getKey() != null && !indirectObjects.contains(cosBase.getKey()))
-                {
-                    indirectObjects.add(cosBase.getKey());
-                    COSBase referencedObject = ((COSObject) cosBase).getObject();
-                    if (referencedObject instanceof COSDictionary)
-                    {
-                        dictionary = (COSDictionary) referencedObject;
-                    }
-                }
+                // dereference object
+                cosBase = ((COSObject) cosBase).getObject();
             }
-            else if (cosBase instanceof COSDictionary)
-            {
-                dictionary = (COSDictionary) cosBase;
-            }
-            if (dictionary != null)
+            if (cosBase instanceof COSDictionary)
             {
                 // descend to included dictionary to collect all included indirect objects
-                dictionary.getIndirectObjectKeys(indirectObjects);
+                ((COSDictionary) cosBase).getIndirectObjectKeys(indirectObjects);
+            }
+            else if (cosBase instanceof COSArray)
+            {
+                // descend to included array to collect all included indirect objects
+                ((COSArray) cosBase).getIndirectObjectKeys(indirectObjects);
+            }
+            else if (cosBaseKey != null)
+            {
+                // add key for all indirect objects other than COSDictionary/COSArray
+                indirectObjects.add(cosBaseKey);
             }
         }
     }

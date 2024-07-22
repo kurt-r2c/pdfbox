@@ -16,20 +16,16 @@
  */
 package org.apache.pdfbox.cos;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 import org.apache.pdfbox.filter.DecodeOptions;
 import org.apache.pdfbox.filter.Filter;
 import org.apache.pdfbox.filter.FilterFactory;
@@ -40,7 +36,7 @@ import org.apache.pdfbox.io.RandomAccessOutputStream;
 import org.apache.pdfbox.io.RandomAccessRead;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.io.RandomAccessReadView;
-import org.apache.pdfbox.io.ScratchFile;
+import org.apache.pdfbox.io.RandomAccessStreamCache;
 
 /**
  * This class represents a stream object in a PDF document.
@@ -52,15 +48,15 @@ public class COSStream extends COSDictionary implements Closeable
     // backing store, in-memory or on-disk
     private RandomAccess randomAccess;
     // used as a temp buffer when creating a new stream
-    private ScratchFile scratchFile;
-    // indicates if the scratchfile was created within this COSStream instance
-    private boolean closeScratchFile = false;
+    private RandomAccessStreamCache streamCache;
+    // indicates if the stream cache was created within this COSStream instance
+    private boolean closeStreamCache = false;
     // true if there's an open OutputStream
     private boolean isWriting;
     // random access view to be read from
     private RandomAccessReadView randomAccessReadView;
     
-    private static final Log LOG = LogFactory.getLog(COSStream.class);
+    private static final Logger LOG = LogManager.getLogger(COSStream.class);
     
     /**
      * Creates a new stream with an empty dictionary.
@@ -78,25 +74,26 @@ public class COSStream extends COSDictionary implements Closeable
     /**
      * Creates a new stream with an empty dictionary. Data is stored in the given scratch file.
      *
-     * @param scratchFile Scratch file for writing stream data.
+     * @param streamCache Stream cache for writing stream data.
      */
-    public COSStream(ScratchFile scratchFile)
+    public COSStream(RandomAccessStreamCache streamCache)
     {
         setInt(COSName.LENGTH, 0);
-        this.scratchFile = scratchFile;
+        this.streamCache = streamCache;
     }
 
     /**
-     * Creates a new stream with an empty dictionary. Data is read from the given random accessview. Written data is stored
-     * in the given scratch file.
+     * Creates a new stream with an empty dictionary. Data is read from the given random accessview. Written data is
+     * stored in the given scratch file.
      *
-     * @param scratchFile Scratch file for writing stream data.
+     * @param streamCache Stream cache for writing stream data.
+     * @param randomAccessReadView source for the data to be read
      * @throws IOException if the length of the random access view isn't available
      */
-    public COSStream(ScratchFile scratchFile, RandomAccessReadView randomAccessReadView)
+    public COSStream(RandomAccessStreamCache streamCache, RandomAccessReadView randomAccessReadView)
             throws IOException
     {
-        this(scratchFile);
+        this(streamCache);
         this.randomAccessReadView = randomAccessReadView;
         setInt(COSName.LENGTH, (int) randomAccessReadView.length());
     }
@@ -116,14 +113,14 @@ public class COSStream extends COSDictionary implements Closeable
         }
     }
 
-    private ScratchFile getScratchFile()
+    private RandomAccessStreamCache getStreamCache() throws IOException
     {
-        if (scratchFile == null)
+        if (streamCache == null)
         {
-            scratchFile = ScratchFile.getMainMemoryOnlyInstance();
-            closeScratchFile = true;
+            streamCache = IOUtils.createMemoryOnlyStreamCache().create();
+            closeStreamCache = true;
         }
-        return scratchFile;
+        return streamCache;
     }
 
     /**
@@ -196,37 +193,7 @@ public class COSStream extends COSDictionary implements Closeable
                 return new RandomAccessReadBuffer(createRawInputStream());
             }
         }
-        else
-        {
-            if (filterList.size() > 1)
-            {
-                Set<Filter> filterSet = new HashSet<>(filterList);
-                if (filterSet.size() != filterList.size())
-                {
-                    throw new IOException("Duplicate");
-                }
-            }
-            InputStream input = createRawInputStream();
-            ByteArrayOutputStream output = new ByteArrayOutputStream(input.available());
-            // apply filters
-            for (int i = 0; i < filterList.size(); i++)
-            {
-                if (i > 0)
-                {
-                    input = new ByteArrayInputStream(output.toByteArray());
-                    output.reset();
-                }
-                try
-                {
-                    filterList.get(i).decode(input, output, this, i, DecodeOptions.DEFAULT);
-                }
-                finally
-                {
-                    IOUtils.closeQuietly(input);
-                }
-            }
-            return new RandomAccessReadBuffer(output.toByteArray());
-        }
+        return Filter.decode(createRawInputStream(), filterList, this, DecodeOptions.DEFAULT, null);
     }
 
     /**
@@ -262,10 +229,10 @@ public class COSStream extends COSDictionary implements Closeable
         if (randomAccess != null)
             randomAccess.clear();
         else
-            randomAccess = getScratchFile().createBuffer();
+            randomAccess = getStreamCache().createBuffer();
         OutputStream randomOut = new RandomAccessOutputStream(randomAccess);
         OutputStream cosOut = new COSOutputStream(getFilterList(), this, randomOut,
-                getScratchFile());
+                getStreamCache());
         isWriting = true;
         return new FilterOutputStream(cosOut)
         {
@@ -301,7 +268,7 @@ public class COSStream extends COSDictionary implements Closeable
         if (randomAccess != null)
             randomAccess.clear();
         else
-            randomAccess = getScratchFile().createBuffer();
+            randomAccess = getStreamCache().createBuffer();
         OutputStream out = new RandomAccessOutputStream(randomAccess);
         isWriting = true;
         return new FilterOutputStream(out)
@@ -390,12 +357,14 @@ public class COSStream extends COSDictionary implements Closeable
     
     /**
      * Returns the contents of the stream as a PDF "text string".
+     * 
+     * @return the PDF string representation of the stream content
      */
     public String toTextString()
     {
         try (InputStream input = createInputStream())
         {
-            byte[] array = IOUtils.toByteArray(input);
+            byte[] array = input.readAllBytes();
             COSString string = new COSString(array);
             return string.getString();
         }
@@ -415,20 +384,20 @@ public class COSStream extends COSDictionary implements Closeable
     /**
      * {@inheritDoc}
      *
-     * Called by PDFBox when the PDDocument is closed, this closes the stream and removes the data.
-     * You will usually not need this.
+     * Called by PDFBox when the PDDocument is closed, this closes the stream and removes the data. You will usually not
+     * need this.
      *
-     * @throws IOException
+     * @throws IOException if something went wrong when closing the stream
      */
     @Override
     public void close() throws IOException
     {
         try
         {
-            if (closeScratchFile && scratchFile != null)
+            if (closeStreamCache && streamCache != null)
             {
-                scratchFile.close();
-                scratchFile = null;
+                streamCache.close();
+                streamCache = null;
             }
         }
         finally

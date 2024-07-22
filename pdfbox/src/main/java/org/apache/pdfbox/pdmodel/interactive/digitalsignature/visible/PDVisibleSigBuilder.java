@@ -23,8 +23,8 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
@@ -53,7 +53,7 @@ import org.apache.pdfbox.pdmodel.interactive.form.PDSignatureField;
 public class PDVisibleSigBuilder implements PDFTemplateBuilder
 {
     private final PDFTemplateStructure pdfStructure;
-    private static final Log LOG = LogFactory.getLog(PDVisibleSigBuilder.class);
+    private static final Logger LOG = LogManager.getLogger(PDVisibleSigBuilder.class);
 
     /**
      * Constructor, creates PDF template structure.
@@ -74,11 +74,11 @@ public class PDVisibleSigBuilder implements PDFTemplateBuilder
     }
 
     /**
-     * Creates a PDDocument and adds the page parameter to it and keeps this as a template in the
-     * PDF template Structure.
+     * Creates a PDDocument and adds the page parameter to it and keeps this as a template in the PDF template
+     * Structure.
      *
-     * @param page
-     * @throws IOException
+     * @param page the page to be added
+     * @throws IOException if the document could not be created
      */
     @Override
     public void createTemplate(PDPage page) throws IOException
@@ -357,6 +357,8 @@ public class PDVisibleSigBuilder implements PDFTemplateBuilder
                                         COSName imageName, COSName innerFormName,
                                         PDVisibleSignDesigner properties) throws IOException
     {
+        // TOD remove unsed parameter from interface??
+
         // Use width and height of BBox as values for transformation matrix.
         int width = (int) this.getStructure().getFormatterRectangle().getWidth();
         int height = (int) this.getStructure().getFormatterRectangle().getHeight();

@@ -20,26 +20,33 @@
 	<description>
     The Apache XmpBox library is an open source Java tool that implements Adobe's XMP(TM)
     specification. It can be used to parse, validate and create xmp contents.
-    It is mainly used by subproject preflight of Apache PDFBox. 
-    XmpBox is a subproject of Apache PDFBox.
   </description>
 
 	<parent>
 		<groupId>org.apache.pdfbox</groupId>
 		<artifactId>pdfbox-parent</artifactId>
-		<version>3.0.0-SNAPSHOT</version>
-		<relativePath>../parent/pom.xml</relativePath>
+		<version>4.0.0-SNAPSHOT</version>
+		<relativePath>../pom.xml</relativePath>
 	</parent>
 
 	<dependencies>
 	    <dependency>
 	      <groupId>org.junit.jupiter</groupId>
 	      <artifactId>junit-jupiter</artifactId>
-	    </dependency> 
-        <dependency>
-            <groupId>commons-logging</groupId>
-            <artifactId>commons-logging</artifactId>
-        </dependency>
+          <version>${junit.version}</version>
+          <scope>test</scope>
+	    </dependency>
+		<dependency>
+			<groupId>org.apache.logging.log4j</groupId>
+			<artifactId>log4j-api</artifactId>
+			<version>${log4j2.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.logging.log4j</groupId>
+			<artifactId>log4j-core</artifactId>
+			<version>${log4j2.version}</version>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>

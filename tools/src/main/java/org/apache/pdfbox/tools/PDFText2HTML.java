@@ -64,7 +64,7 @@ public class PDFText2HTML extends PDFTextStripper
                 + "\"http://www.w3.org/TR/html4/loose.dtd\">\n");
         buf.append("<html><head>");
         buf.append("<title>").append(escape(getTitle())).append("</title>\n");
-        buf.append("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=\"UTF-8\">\n");
+        buf.append("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\n");
         buf.append("</head>\n");
         buf.append("<body>\n");
         super.writeString(buf.toString());
@@ -88,7 +88,7 @@ public class PDFText2HTML extends PDFTextStripper
     protected String getTitle()
     {
         String titleGuess = document.getDocumentInformation().getTitle();
-        if(titleGuess != null && titleGuess.length() > 0)
+        if(titleGuess != null && !titleGuess.isEmpty())
         {
             return titleGuess;
         }
@@ -220,7 +220,7 @@ public class PDFText2HTML extends PDFTextStripper
         // write non-ASCII as named entities
         if ((character < 32) || (character > 126))
         {
-            builder.append("&#").append((int) character).append(";");
+            builder.append("&#").append((int) character).append(';');
         }
         else
         {
@@ -239,7 +239,7 @@ public class PDFText2HTML extends PDFTextStripper
                 builder.append("&gt;");
                 break;
             default:
-                builder.append(String.valueOf(character));
+                builder.append(character);
             }
         }
     }

@@ -42,9 +42,11 @@ public class GlyphData
      * @param glyphTable The glyph table this glyph belongs to.
      * @param data The stream to read the data from.
      * @param leftSideBearing The left side bearing for this glyph.
+     * @param level composite level
      * @throws IOException If there is an error reading the data.
      */
-    void initData( GlyphTable glyphTable, TTFDataStream data, int leftSideBearing ) throws IOException
+    void initData( GlyphTable glyphTable, TTFDataStream data, int leftSideBearing, int level)
+            throws IOException
     {
         numberOfContours = data.readSignedShort();
         xMin = data.readSignedShort();
@@ -62,7 +64,7 @@ public class GlyphData
         else 
         {
             // create a composite glyph
-            glyphDescription = new GlyfCompositeDescript(data, glyphTable);
+            glyphDescription = new GlyfCompositeDescript(data, glyphTable, level + 1);
         }
     }
 
@@ -84,14 +86,6 @@ public class GlyphData
     }
 
     /**
-     * @param boundingBoxValue The boundingBox to set.
-     */
-    public void setBoundingBox(BoundingBox boundingBoxValue)
-    {
-        this.boundingBox = boundingBoxValue;
-    }
-
-    /**
      * @return Returns the numberOfContours.
      */
     public short getNumberOfContours()
@@ -99,14 +93,6 @@ public class GlyphData
         return numberOfContours;
     }
 
-    /**
-     * @param numberOfContoursValue The numberOfContours to set.
-     */
-    public void setNumberOfContours(short numberOfContoursValue)
-    {
-        this.numberOfContours = numberOfContoursValue;
-    }
-   
     /**
      * Returns the description of the glyph.
      * @return the glyph description

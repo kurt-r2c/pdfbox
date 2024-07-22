@@ -21,8 +21,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Base64;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 /**
  * Utility functions for hex encoding.
@@ -31,7 +31,7 @@ import org.apache.commons.logging.LogFactory;
  */
 public final class Hex
 {
-    private static final Log LOG = LogFactory.getLog(Hex.class);
+    private static final Logger LOG = LogManager.getLogger(Hex.class);
 
     /**
      * for hex conversion.
@@ -46,15 +46,21 @@ public final class Hex
 
     /**
      * Returns a hex string of the given byte.
+     * 
+     * @param b the byte to be converted
+     * @return the hex string representing the given byte
      */
     public static String getString(byte b)
     {
-        char[] chars = new char[]{HEX_CHARS[getHighNibble(b)], HEX_CHARS[getLowNibble(b)]};
+        char[] chars = {HEX_CHARS[getHighNibble(b)], HEX_CHARS[getLowNibble(b)]};
         return new String(chars);
     }
 
     /**
      * Returns a hex string of the given byte array.
+     * 
+     * @param bytes the bytes to be converted
+     * @return the hex string representing the given bytes
      */
     public static String getString(byte[] bytes)
     {
@@ -68,6 +74,9 @@ public final class Hex
 
     /**
      * Returns the bytes corresponding to the ASCII hex encoding of the given byte.
+     * 
+     * @param b the byte to be converted
+     * @return the ASCII hex encoding of the given byte
      */
     public static byte[] getBytes(byte b)
     {
@@ -76,6 +85,9 @@ public final class Hex
     
     /**
      * Returns the bytes corresponding to the ASCII hex encoding of the given bytes.
+     * 
+     * @param bytes the bytey to be converted
+     * @return the ASCII hex encoding of the given bytes
      */
     public static byte[] getBytes(byte[] bytes)
     {
@@ -88,8 +100,11 @@ public final class Hex
         return asciiBytes;
     }
 
-    /** 
+    /**
      * Returns the characters corresponding to the ASCII hex encoding of the given short.
+     * 
+     * @param num the short value to be converted
+     * @return the ASCII hex encoding of the given short value
      */
     public static char[] getChars(short num)
     {
@@ -191,7 +206,8 @@ public final class Hex
      */
     public static byte[] decodeBase64(String base64Value)
     {
-        return Base64.getDecoder().decode(base64Value.replaceAll("\\s", ""));
+        return Base64.getDecoder().
+                decode(StringUtil.PATTERN_SPACE.matcher(base64Value).replaceAll(""));
     }
 
     /**
@@ -219,7 +235,7 @@ public final class Hex
                 }
                 catch (NumberFormatException ex)
                 {
-                    LOG.error("Can't parse " + hexByte + ", aborting decode", ex);
+                    LOG.error(() -> "Can't parse " + hexByte + ", aborting decode", ex);
                     break;
                 }
                 i += 2;

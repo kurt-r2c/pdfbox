@@ -48,6 +48,9 @@ public class OpenTypeFont extends TrueTypeFont
      * Get the "CFF" table for this OTF.
      *
      * @return The "CFF" table.
+     * 
+     * @throws IOException if the font data could not be read
+     * @throws UnsupportedOperationException if the current font isn't a CFF font
      */
     public CFFTable getCFF() throws IOException
     {
@@ -71,20 +74,49 @@ public class OpenTypeFont extends TrueTypeFont
     @Override
     public GeneralPath getPath(String name) throws IOException
     {
-        int gid = nameToGID(name);
-        return getCFF().getFont().getType2CharString(gid).getPath();
+        if (isPostScript && isSupportedOTF())
+        {
+            int gid = nameToGID(name);
+            return getCFF().getFont().getType2CharString(gid).getPath();
+        }
+        else
+        {
+            return super.getPath(name);
+        }
     }
 
     /**
      * Returns true if this font is a PostScript outline font.
+     * 
+     * @return true if the font is a PostScript outline font, otherwise false
      */
     public boolean isPostScript()
     {
-        return tables.containsKey(CFFTable.TAG);
+        return isPostScript || tables.containsKey(CFFTable.TAG) || tables.containsKey("CFF2");
+    }
+
+    /**
+     * Returns true if this font is supported.
+     * 
+     * There are 3 kind of OpenType fonts, fonts using TrueType outlines, fonts using CFF outlines (version 1 and 2)
+     * 
+     * Fonts using CFF outlines version 2 aren't supported yet.
+     * 
+     * @return true if the font is supported
+     */
+    public boolean isSupportedOTF()
+    {
+        // OTF using CFF2 based outlines aren't yet supported
+        return !(isPostScript //
+                && !tables.containsKey(CFFTable.TAG) //
+                && tables.containsKey("CFF2") //
+        );
     }
 
     /**
      * Returns true if this font uses OpenType Layout (Advanced Typographic) tables.
+     * 
+     * @return true if the font has any layout table, otherwise false
      */
     public boolean hasLayoutTables()
     {

@@ -193,9 +193,7 @@ public class PDAnnotationFreeText extends PDAnnotationMarkup
      */
     public final void setCallout(float[] callout)
     {
-        COSArray newCallout = new COSArray();
-        newCallout.setFloatArray(callout);
-        getCOSObject().setItem(COSName.CL, newCallout);
+        getCOSObject().setItem(COSName.CL, COSArray.of(callout));
     }
 
     /**
@@ -287,7 +285,7 @@ public class PDAnnotationFreeText extends PDAnnotationMarkup
     /**
      * Set a custom appearance handler for generating the annotations appearance streams.
      * 
-     * @param appearanceHandler
+     * @param appearanceHandler custom appearance handler
      */
     public void setCustomAppearanceHandler(PDAppearanceHandler appearanceHandler)
     {

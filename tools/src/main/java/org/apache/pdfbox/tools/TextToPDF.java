@@ -18,10 +18,14 @@ package org.apache.pdfbox.tools;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.io.Reader;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Callable;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -66,7 +70,7 @@ public class TextToPDF implements Callable<Integer>
 
     // Expected for CLI app to write to System.out/System.err
     @SuppressWarnings("squid:S106")
-    private static final PrintStream SYSERR = System.err;
+    private final PrintStream SYSERR;
 
     @Option(names = "-fontSize", description = "the size of the font to use (default: ${DEFAULT-VALUE}")
     private int fontSize = DEFAULT_FONT_SIZE;
@@ -76,6 +80,9 @@ public class TextToPDF implements Callable<Integer>
 
     @Option(names = "-pageSize", description = "the page size to use. \nCandidates: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
     private PageSizes pageSize = PageSizes.LETTER;
+
+    @Option(names = "-charset", description = "the charset to use. \n(default: ${DEFAULT-VALUE})")
+    private Charset charset = Charset.defaultCharset();
 
     @Option(names = "-standardFont", 
         description = "the font to use for the text. Either this or -ttf should be specified but not both.\nCandidates: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
@@ -117,8 +124,15 @@ public class TextToPDF implements Callable<Integer>
     }
 
     /**
-     * This will create a PDF document with some text in it.
-     * <br>
+     * Constructor.
+     */
+    public TextToPDF()
+    {
+        SYSERR = System.err;
+    }
+
+    /**
+     * This will create a PDF document with some text in it. <br>
      * see usage() for commandline
      *
      * @param args Command line arguments.
@@ -150,10 +164,34 @@ public class TextToPDF implements Callable<Integer>
             setFontSize(fontSize);
             setMediaBox(pageSize.getPageSize());
             setLandscape(landscape);
-
-            try (FileReader fileReader = new FileReader(infile))
+            
+            boolean hasUtf8BOM = false;
+            if (charset.equals(StandardCharsets.UTF_8))
             {
-                createPDFFromText(doc, fileReader);
+                // check for utf8 BOM
+                // FileInputStream doesn't support mark/reset
+                try (InputStream is = new FileInputStream(infile))
+                {
+                    if (is.read() == 0xEF && is.read() == 0xBB && is.read() == 0xBF)
+                    {
+                        hasUtf8BOM = true;
+                    }
+                }
+            }
+            try (InputStream is = new FileInputStream(infile))
+            {
+                if (hasUtf8BOM)
+                {
+                    long skipped = is.skip(3);
+                    if (skipped != 3)
+                    {
+                        throw new IOException("Could not skip 3 bytes, size changed?!");
+                    }
+                }
+                try (Reader reader = new InputStreamReader(is, charset))
+                {
+                    createPDFFromText(doc, reader);
+                }
             }
             doc.save(outfile);
         }
@@ -251,11 +289,11 @@ public class TextToPDF implements Callable<Integer>
                     // word1 is the part before ff, word2 after
                     // both can be empty
                     // word1 can also be empty without ff, if a line has many spaces
-                    if (word1.length() > 0 || !ff)
+                    if (!word1.isEmpty() || !ff)
                     {
                         if (addSpace)
                         {
-                            nextLineToDraw.append(" ");
+                            nextLineToDraw.append(' ');
                         }
                         else
                         {
@@ -263,7 +301,7 @@ public class TextToPDF implements Callable<Integer>
                         }
                         nextLineToDraw.append(word1);
                     }
-                    if (!ff || word2.length() == 0)
+                    if (!ff || word2.isEmpty())
                     {
                         lineIndex++;
                     }

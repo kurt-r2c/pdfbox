@@ -33,12 +33,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 import org.apache.fontbox.ttf.CmapLookup;
-import org.apache.fontbox.ttf.gsub.CompoundCharacterTokenizer;
 import org.apache.fontbox.ttf.gsub.GsubWorker;
 import org.apache.fontbox.ttf.gsub.GsubWorkerFactory;
 import org.apache.fontbox.ttf.model.GsubData;
@@ -68,6 +66,7 @@ import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
 import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.NumberFormatUtil;
+import org.apache.pdfbox.util.StringUtil;
 
 /**
  * Provides the ability to write to a content stream.
@@ -76,7 +75,7 @@ import org.apache.pdfbox.util.NumberFormatUtil;
  */
 abstract class PDAbstractContentStream implements Closeable
 {
-    private static final Log LOG = LogFactory.getLog(PDAbstractContentStream.class);
+    private static final Logger LOG = LogManager.getLogger(PDAbstractContentStream.class);
 
     protected final PDDocument document; // may be null
 
@@ -117,7 +116,7 @@ abstract class PDAbstractContentStream implements Closeable
      * Sets the maximum number of digits allowed for fractional numbers.
      * 
      * @see NumberFormat#setMaximumFractionDigits(int)
-     * @param fractionDigitsNumber
+     * @param fractionDigitsNumber the maximum number of digits allowed for fractional numbers
      */
     protected void setMaximumFractionDigits(int fractionDigitsNumber)
     {
@@ -186,13 +185,14 @@ abstract class PDAbstractContentStream implements Closeable
             }
             else
             {
-                LOG.warn("Using the subsetted font '" + font.getName() +
-                        "' without a PDDocument context; call subset() before saving");
+                LOG.warn(
+                        "Using the subsetted font '{}' without a PDDocument context; call subset() before saving",
+                        font.getName());
             }
         }
         else if (!font.isEmbedded() && !font.isStandard14())
         {
-            LOG.warn("attempting to use font '" + font.getName() + "' that isn't embedded");
+            LOG.warn("attempting to use font '{}' that isn't embedded", font.getName());
         }
 
         // complex text layout
@@ -205,6 +205,10 @@ abstract class PDAbstractContentStream implements Closeable
                 GsubWorker gsubWorker = gsubWorkerFactory.getGsubWorker(pdType0Font.getCmapLookup(),
                         gsubData);
                 gsubWorkers.put((PDType0Font) font, gsubWorker);
+            }
+            else
+            {
+                LOG.debug("No GSUB data found in font {}", font.getName());
             }
         }
 
@@ -504,20 +508,20 @@ abstract class PDAbstractContentStream implements Closeable
         sb.append(inlineImage.getHeight());
 
         sb.append("\n /CS ");
-        sb.append("/");
+        sb.append('/');
         sb.append(inlineImage.getColorSpace().getName());
 
         COSArray decodeArray = inlineImage.getDecode();
-        if (decodeArray != null && decodeArray.size() > 0)
+        if (decodeArray != null && !decodeArray.isEmpty())
         {
             sb.append("\n /D ");
-            sb.append("[");
+            sb.append('[');
             for (COSBase base : decodeArray)
             {
                 sb.append(((COSNumber) base).intValue());
-                sb.append(" ");
+                sb.append(' ');
             }
-            sb.append("]");
+            sb.append(']');
         }
 
         if (inlineImage.isStencil())
@@ -692,7 +696,7 @@ abstract class PDAbstractContentStream implements Closeable
      */
     public void setStrokingColor(Color color) throws IOException
     {
-        float[] components = new float[] {
+        float[] components = {
                 color.getRed() / 255f, color.getGreen() / 255f, color.getBlue() / 255f };
         PDColor pdColor = new PDColor(components, PDDeviceRGB.INSTANCE);
         setStrokingColor(pdColor);
@@ -811,7 +815,7 @@ abstract class PDAbstractContentStream implements Closeable
      */
     public void setNonStrokingColor(Color color) throws IOException
     {
-        float[] components = new float[] {
+        float[] components = {
                 color.getRed() / 255f, color.getGreen() / 255f, color.getBlue() / 255f };
         PDColor pdColor = new PDColor(components, PDDeviceRGB.INSTANCE);
         setNonStrokingColor(pdColor);
@@ -1307,7 +1311,7 @@ abstract class PDAbstractContentStream implements Closeable
     /**
      * Begin a marked content sequence.
      *
-     * @param tag the tag
+     * @param tag the tag to be added to the content stream
      * @throws IOException If the content stream could not be written
      */
     public void beginMarkedContent(COSName tag) throws IOException
@@ -1317,11 +1321,10 @@ abstract class PDAbstractContentStream implements Closeable
     }
 
     /**
-     * Begin a marked content sequence with a reference to an entry in the page resources'
-     * Properties dictionary.
+     * Begin a marked content sequence with a reference to an entry in the page resources' Properties dictionary.
      *
-     * @param tag the tag
-     * @param propertyList property list
+     * @param tag the tag to be added to the content stream
+     * @param propertyList property list to be added to the content stream
      * @throws IOException If the content stream could not be written
      */
     public void beginMarkedContent(COSName tag, PDPropertyList propertyList) throws IOException
@@ -1344,7 +1347,7 @@ abstract class PDAbstractContentStream implements Closeable
     /**
      * Set an extended graphics state.
      * 
-     * @param state The extended graphics state.
+     * @param state The extended graphics state to be added to the content stream
      * @throws IOException If the content stream could not be written.
      */
     public void setGraphicsStateParameters(PDExtendedGraphicsState state) throws IOException
@@ -1356,10 +1359,11 @@ abstract class PDAbstractContentStream implements Closeable
     /**
      * Write a comment line.
      *
-     * @param comment
+     * @param comment the comment to be added to the content stream
+     * 
      * @throws IOException If the content stream could not be written.
-     * @throws IllegalArgumentException If the comment contains a newline. This is not allowed,
-     * because the next line could be ordinary PDF content.
+     * @throws IllegalArgumentException If the comment contains a newline. This is not allowed, because the next line
+     * could be ordinary PDF content.
      */
     public void addComment(String comment) throws IOException
     {
@@ -1374,8 +1378,10 @@ abstract class PDAbstractContentStream implements Closeable
 
     /**
      * Writes a real number to the content stream.
-     * @param real
-     * @throws java.io.IOException
+     * 
+     * @param real the real number to be added to the content stream
+     * 
+     * @throws IOException If the underlying stream has a problem being written to.
      * @throws IllegalArgumentException if the parameter is not a finite number
      */
     protected void writeOperand(float real) throws IOException
@@ -1400,8 +1406,9 @@ abstract class PDAbstractContentStream implements Closeable
 
     /**
      * Writes an integer number to the content stream.
-     * @param integer
-     * @throws java.io.IOException
+     * 
+     * @param integer the integer to be added to the content stream
+     * @throws IOException If the underlying stream has a problem being written to.
      */
     protected void writeOperand(int integer) throws IOException
     {
@@ -1411,8 +1418,9 @@ abstract class PDAbstractContentStream implements Closeable
 
     /**
      * Writes a COSName to the content stream.
-     * @param name
-     * @throws java.io.IOException
+     * 
+     * @param name the name to be added to the content stream
+     * @throws IOException If the underlying stream has a problem being written to.
      */
     protected void writeOperand(COSName name) throws IOException
     {
@@ -1422,38 +1430,31 @@ abstract class PDAbstractContentStream implements Closeable
 
     /**
      * Writes a string to the content stream as ASCII.
-     * @param text
-     * @throws java.io.IOException
+     * 
+     * @param text the text to be added to the content stream followed by a newline
+     * @throws IOException If the underlying stream has a problem being written to.
      */
     protected void writeOperator(String text) throws IOException
     {
-        outputStream.write(text.getBytes(StandardCharsets.US_ASCII));
-        outputStream.write('\n');
+        write(text);
+        writeLine();
     }
 
     /**
      * Writes a string to the content stream as ASCII.
-     * @param text
-     * @throws java.io.IOException
+     * 
+     * @param text the text to be added to the content stream
+     * @throws IOException If the underlying stream has a problem being written to.
      */
     protected void write(String text) throws IOException
     {
-        outputStream.write(text.getBytes(StandardCharsets.US_ASCII));
+        writeBytes(text.getBytes(StandardCharsets.US_ASCII));
     }
 
     /**
-     * Writes a byte[] to the content stream.
-     * @param data
-     * @throws java.io.IOException
-     */
-    protected void write(byte[] data) throws IOException
-    {
-        outputStream.write(data);
-    }
-    
-    /**
      * Writes a newline to the content stream as ASCII.
-     * @throws java.io.IOException
+     * 
+     * @throws IOException If the underlying stream has a problem being written to.
      */
     protected void writeLine() throws IOException
     {
@@ -1462,8 +1463,9 @@ abstract class PDAbstractContentStream implements Closeable
 
     /**
      * Writes binary data to the content stream.
-     * @param data
-     * @throws java.io.IOException
+     * 
+     * @param data as byte formatted to be added to the content stream
+     * @throws IOException If the underlying stream has a problem being written to.
      */
     protected void writeBytes(byte[] data) throws IOException
     {
@@ -1472,6 +1474,9 @@ abstract class PDAbstractContentStream implements Closeable
 
     /**
      * Writes an AffineTransform to the content stream as an array.
+     * 
+     * @param transform AffineTransfrom to be added to the content stream
+     * @throws IOException If the underlying stream has a problem being written to.
      */
     private void writeAffineTransform(AffineTransform transform) throws IOException
     {
@@ -1593,12 +1598,12 @@ abstract class PDAbstractContentStream implements Closeable
     }
 
     /**
-     * Set the text rise value, i.e. move the baseline up or down. This is useful for drawing
-     * superscripts or subscripts.
+     * Set the text rise value, i.e. move the baseline up or down. This is useful for drawing superscripts or
+     * subscripts.
      *
-     * @param rise Specifies the distance, in unscaled text space units, to move the baseline up or
-     * down from its default location. 0 restores the default location.
-     * @throws IOException
+     * @param rise Specifies the distance, in unscaled text space units, to move the baseline up or down from its
+     * default location. 0 restores the default location.
+     * @throws IOException If the content stream could not be written.
      */
     public void setTextRise(float rise) throws IOException
     {
@@ -1609,16 +1614,18 @@ abstract class PDAbstractContentStream implements Closeable
     private byte[] encodeForGsub(GsubWorker gsubWorker,
                                  Set<Integer> glyphIds, PDType0Font font, String text) throws IOException
     {
-        Pattern spaceRegex = Pattern.compile("\\s");
-
         // break the entire chunk of text into words by splitting it with space
-        List<String> words = new CompoundCharacterTokenizer("\\s").tokenize(text);
+        String[] words = StringUtil.tokenizeOnSpace(text);
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         for (String word : words)
         {
-            if (spaceRegex.matcher(word).matches())
+            if (word == null)
+            {
+                continue;
+            }
+            if (word.length() == 1 && word.isBlank())
             {
                 out.write(font.encode(word));
             }
@@ -1633,18 +1640,30 @@ abstract class PDAbstractContentStream implements Closeable
 
     private List<Integer> applyGSUBRules(GsubWorker gsubWorker, ByteArrayOutputStream out, PDType0Font font, String word) throws IOException
     {
-        char[] charArray = word.toCharArray();
-        List<Integer> originalGlyphIds = new ArrayList<>(charArray.length);
+        int[] codePointArray = word.codePoints().toArray();
+        List<Integer> originalGlyphIds = new ArrayList<>(word.codePointCount(0, word.length()));
         CmapLookup cmapLookup = font.getCmapLookup();
 
         // convert characters into glyphIds
-        for (char unicodeChar : charArray)
+        for (int codePoint : codePointArray)
         {
-            int glyphId = cmapLookup.getGlyphId(unicodeChar);
+            int glyphId = cmapLookup.getGlyphId(codePoint);
             if (glyphId <= 0)
             {
-                throw new IllegalStateException(
-                        "could not find the glyphId for the character: " + unicodeChar);
+                String source;
+                if (Character.isBmpCodePoint(codePoint))
+                {
+                    source = String.valueOf((char) codePoint);
+                }
+                else if (Character.isValidCodePoint(codePoint))
+                {
+                    source = new String(new int[] {codePoint},0,1);
+                }
+                else
+                {
+                    source = "?";
+                }
+                throw new IllegalStateException("could not find the glyphId for the character: " + source);
             }
             originalGlyphIds.add(glyphId);
         }

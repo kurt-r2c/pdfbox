@@ -18,9 +18,9 @@ package org.apache.pdfbox.contentstream.operator.state;
 
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.pdfbox.contentstream.PDFStreamEngine;
 import org.apache.pdfbox.contentstream.operator.MissingOperandException;
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.contentstream.operator.OperatorName;
@@ -36,8 +36,13 @@ import org.apache.pdfbox.cos.COSNumber;
  */
 public class SetLineDashPattern extends OperatorProcessor
 {
-    private static final Log LOG = LogFactory.getLog(SetLineDashPattern.class);
+    private static final Logger LOG = LogManager.getLogger(SetLineDashPattern.class);
     
+    public SetLineDashPattern(PDFStreamEngine context)
+    {
+        super(context);
+    }
+
     @Override
     public void process(Operator operator, List<COSBase> arguments) throws MissingOperandException
     {
@@ -70,12 +75,12 @@ public class SetLineDashPattern extends OperatorProcessor
             }
             else
             {
-                LOG.warn("dash array has non number element " + base + ", ignored");
+                LOG.warn("dash array has non number element {}, ignored", base);
                 dashArray = new COSArray();
                 break;
             }
         }
-        context.setLineDashPattern(dashArray, dashPhase);
+        getContext().setLineDashPattern(dashArray, dashPhase);
     }
 
     @Override

@@ -69,8 +69,9 @@ public final class PDIndexed extends PDSpecialColorSpace
 
     /**
      * Creates a new indexed color space from the given PDF array.
+     * 
      * @param indexedArray the array containing the indexed parameters
-     * @throws java.io.IOException
+     * @throws IOException if the colorspace could not be created
      */
     public PDIndexed(COSArray indexedArray) throws IOException
     {
@@ -79,9 +80,10 @@ public final class PDIndexed extends PDSpecialColorSpace
 
     /**
      * Creates a new indexed color space from the given PDF array.
+     * 
      * @param indexedArray the array containing the indexed parameters
      * @param resources the resources, can be null. Allows to use its cache for the colorspace.
-     * @throws java.io.IOException
+     * @throws IOException if the colorspace could not be created
      */
     public PDIndexed(COSArray indexedArray, PDResources resources) throws IOException
     {
@@ -168,7 +170,7 @@ public final class PDIndexed extends PDSpecialColorSpace
     @Override
     public float[] toRGB(float[] value)
     {
-        if (value.length > 1)
+        if (value.length != 1)
         {
             throw new IllegalArgumentException("Indexed color spaces must have one color value");
         }

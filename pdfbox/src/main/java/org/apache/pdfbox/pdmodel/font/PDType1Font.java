@@ -25,8 +25,8 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 import org.apache.fontbox.EncodedFont;
 import org.apache.fontbox.FontBoxFont;
 import org.apache.fontbox.type1.DamagedFontException;
@@ -57,7 +57,7 @@ import org.apache.pdfbox.pdmodel.font.encoding.SymbolEncoding;
  */
 public class PDType1Font extends PDSimpleFont implements PDVectorFont
 {
-    private static final Log LOG = LogFactory.getLog(PDType1Font.class);
+    private static final Logger LOG = LogManager.getLogger(PDType1Font.class);
 
     // alternative names for glyphs which are commonly encountered
     private static final Map<String, String> ALT_NAMES = new HashMap<>();
@@ -140,7 +140,7 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
                 LOG.debug("Couldn't get font name - setting to '?'", e);
                 fontName = "?";
             }
-            LOG.warn("Using fallback font " + fontName + " for base font " + getBaseFont());
+            LOG.warn("Using fallback font {} for base font {}", fontName, getBaseFont());
         }
         isEmbedded = false;
         isDamaged = false;
@@ -152,7 +152,7 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
      *
      * @param doc PDF document to write to
      * @param pfbIn PFB file stream
-     * @throws IOException
+     * @throws IOException if the font could not be read
      */
     public PDType1Font(PDDocument doc, InputStream pfbIn) throws IOException
     {
@@ -164,8 +164,8 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
      *
      * @param doc PDF document to write to
      * @param pfbIn PFB file stream
-     * @param encoding
-     * @throws IOException
+     * @param encoding encoding to be used for the font
+     * @throws IOException if the font could not be read
      */
     public PDType1Font(PDDocument doc, InputStream pfbIn, Encoding encoding) throws IOException
     {
@@ -246,12 +246,12 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
                 }
                 catch (DamagedFontException e)
                 {
-                    LOG.warn("Can't read damaged embedded Type1 font " + fd.getFontName(), e);
+                    LOG.warn(() -> "Can't read damaged embedded Type1 font " + fd.getFontName(), e);
                     fontIsDamaged = true;
                 }
                 catch (IOException e)
                 {
-                    LOG.error("Can't read the embedded Type1 font " + fd.getFontName(), e);
+                    LOG.error(() -> "Can't read the embedded Type1 font " + fd.getFontName(), e);
                     fontIsDamaged = true;
                 }
             }
@@ -273,7 +273,7 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
             
             if (mapping.isFallback())
             {
-                LOG.warn("Using fallback font " + genericFont.getName() + " for " + getBaseFont());
+                LOG.warn("Using fallback font {} for {}", genericFont.getName(), getBaseFont());
             }
         }
         readEncoding();
@@ -309,7 +309,7 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
         {
             if (LOG.isWarnEnabled())
             {
-                LOG.warn("Ignored invalid Length1 " + length1 + " for Type 1 font " + getName());
+                LOG.warn("Ignored invalid Length1 {} for Type 1 font {}", length1, getName());
             }
             return offset;
         }
@@ -357,7 +357,7 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
         // repair Length2 if necessary
         if (length2 < 0 || length2 > bytes.length - length1)
         {
-            LOG.warn("Ignored invalid Length2 " + length2 + " for Type 1 font " + getName());
+            LOG.warn("Ignored invalid Length2 {} for Type 1 font {}", length2, getName());
             return bytes.length - length1;
         }
         return length2;
@@ -365,6 +365,8 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
 
     /**
      * Returns the PostScript name of the font.
+     * 
+     * @return the PostScript name of the font
      */
     public final String getBaseFont()
     {
@@ -512,6 +514,8 @@ public class PDType1Font extends PDSimpleFont implements PDVectorFont
 
     /**
      * Returns the embedded or substituted Type 1 font, or null if there is none.
+     * 
+     * @return the embedded or substituted Type 1 font or null
      */
     public Type1Font getType1Font()
     {

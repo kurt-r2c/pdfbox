@@ -24,9 +24,8 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 /**
  * FontFinder for native Windows platforms. This class is based on a class provided by Apache FOP. see
@@ -35,7 +34,7 @@ import org.apache.commons.logging.LogFactory;
 public class WindowsFontDirFinder implements FontDirFinder
 {
 
-    private static final Log LOG = LogFactory.getLog(WindowsFontDirFinder.class);
+    private static final Logger LOG = LogManager.getLogger(WindowsFontDirFinder.class);
 
     /**
      * Attempts to read windir environment variable on windows (disclaimer: This is a bit dirty but seems to work
@@ -45,14 +44,17 @@ public class WindowsFontDirFinder implements FontDirFinder
     {
         Process process;
         Runtime runtime = Runtime.getRuntime();
+        String cmd;
         if (osName.startsWith("Windows 9"))
         {
-            process = runtime.exec("command.com /c echo %windir%");
+            cmd = "command.com";
         }
         else
         {
-            process = runtime.exec("cmd.exe /c echo %windir%");
+            cmd = "cmd.exe";
         }
+        String[] cmdArray = { cmd, "/c", "echo", "%windir%" };
+        process = runtime.exec(cmdArray);
         try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(
                 process.getInputStream(), StandardCharsets.ISO_8859_1)))
         {

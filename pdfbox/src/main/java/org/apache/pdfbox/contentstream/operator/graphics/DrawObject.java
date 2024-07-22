@@ -19,8 +19,9 @@ package org.apache.pdfbox.contentstream.operator.graphics;
 import java.io.IOException;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
 import org.apache.pdfbox.contentstream.operator.MissingOperandException;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
@@ -40,7 +41,12 @@ import org.apache.pdfbox.contentstream.operator.OperatorName;
  */
 public final class DrawObject extends GraphicsOperatorProcessor
 {
-    private static final Log LOG = LogFactory.getLog(DrawObject.class);
+    private static final Logger LOG = LogManager.getLogger(DrawObject.class);
+
+    public DrawObject(PDFGraphicsStreamEngine context)
+    {
+        super(context);
+    }
 
     @Override
     public void process(Operator operator, List<COSBase> operands) throws IOException
@@ -55,6 +61,7 @@ public final class DrawObject extends GraphicsOperatorProcessor
             return;
         }
         COSName objectName = (COSName) base0;
+        PDFGraphicsStreamEngine context = getGraphicsContext();
         PDXObject xobject = context.getResources().getXObject(objectName);
 
         if (xobject == null)

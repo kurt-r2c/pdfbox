@@ -200,9 +200,7 @@ public class PDAnnotationLink extends PDAnnotation
      */
     public void setQuadPoints(float[] quadPoints)
     {
-        COSArray newQuadPoints = new COSArray();
-        newQuadPoints.setFloatArray(quadPoints);
-        getCOSObject().setItem(COSName.QUADPOINTS, newQuadPoints);
+        getCOSObject().setItem(COSName.QUADPOINTS, COSArray.of(quadPoints));
     }
 
     /**
@@ -219,7 +217,7 @@ public class PDAnnotationLink extends PDAnnotation
     /**
      * Set a custom appearance handler for generating the annotations appearance streams.
      * 
-     * @param appearanceHandler
+     * @param appearanceHandler custom appearance handler
      */
     public void setCustomAppearanceHandler(PDAppearanceHandler appearanceHandler)
     {

@@ -83,6 +83,8 @@ public class CFFType1Font extends CFFFont implements EncodedFont
      * Returns the Type 1 charstring for the given PostScript glyph name.
      *
      * @param name PostScript glyph name
+     * @return Type1 charstring of the given PostScript glyph name
+     * 
      * @throws IOException if the charstring could not be read
      */
     public Type1CharString getType1CharString(String name) throws IOException
@@ -136,8 +138,7 @@ public class CFFType1Font extends CFFFont implements EncodedFont
                 // .notdef
                 bytes = charStrings[0];
             }
-            List<Object> type2seq = getParser().parse(bytes, globalSubrIndex, getLocalSubrIndex(),
-                    name);
+            List<Object> type2seq = getParser().parse(bytes, globalSubrIndex, getLocalSubrIndex());
             type2 = new Type2CharString(reader, getName(), name, gid, type2seq, getDefaultWidthX(),
                     getNominalWidthX());
             charStringCache.put(gid, type2);

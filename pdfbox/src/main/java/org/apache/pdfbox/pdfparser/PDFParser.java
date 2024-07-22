@@ -20,21 +20,20 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSDictionary;
-import org.apache.pdfbox.cos.COSDocument;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.io.IOUtils;
-import org.apache.pdfbox.io.MemoryUsageSetting;
 import org.apache.pdfbox.io.RandomAccessRead;
+import org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 
 public class PDFParser extends COSParser
 {
-    private static final Log LOG = LogFactory.getLog(PDFParser.class);
+    private static final Logger LOG = LogManager.getLogger(PDFParser.class);
 
     /**
      * Constructor.
@@ -85,35 +84,16 @@ public class PDFParser extends COSParser
      * @param decryptionPassword password to be used for decryption.
      * @param keyStore key store to be used for decryption when using public key security
      * @param alias alias to be used for decryption when using public key security
-     * @param memUsageSetting defines how memory is used for buffering PDF streams
+     * @param streamCacheCreateFunction a function to create an instance of the stream cache
      *
      * @throws IOException If something went wrong.
      */
     public PDFParser(RandomAccessRead source, String decryptionPassword, InputStream keyStore,
-            String alias, MemoryUsageSetting memUsageSetting) throws IOException
+            String alias, StreamCacheCreateFunction streamCacheCreateFunction) throws IOException
     {
-        super(source, decryptionPassword, keyStore, alias);
-        init(memUsageSetting);
+        super(source, decryptionPassword, keyStore, alias, streamCacheCreateFunction);
     }
 
-    private void init(MemoryUsageSetting memUsageSetting)
-    {
-        String eofLookupRangeStr = System.getProperty(SYSPROP_EOFLOOKUPRANGE);
-        if (eofLookupRangeStr != null)
-        {
-            try
-            {
-                setEOFLookupRange(Integer.parseInt(eofLookupRangeStr));
-            }
-            catch (NumberFormatException nfe)
-            {
-                LOG.warn("System property " + SYSPROP_EOFLOOKUPRANGE
-                        + " does not contain an integer value, but: '" + eofLookupRangeStr + "'");
-            }
-        }
-        document = new COSDocument(memUsageSetting, this);
-    }
-    
     /**
      * The initial parse will first parse only the trailer, the xrefstart and all xref tables to have a pointer (offset)
      * to all the pdf's objects. It can handle linearized pdfs, which will have an xref at the end pointing to an xref
@@ -146,6 +126,8 @@ public class PDFParser extends COSParser
      * This will parse the stream and populate the PDDocument object. This will close the keystore stream when it is
      * done parsing. Lenient mode is active by default.
      *
+     * @return the populated PDDocument
+     *
      * @throws InvalidPasswordException If the password is incorrect.
      * @throws IOException If there is an error reading from the stream or corrupt data is found.
      */
@@ -159,6 +141,8 @@ public class PDFParser extends COSParser
      * done parsing.
      *
      * @param lenient activate leniency if set to true
+     * @return the populated PDDocument
+     * 
      * @throws InvalidPasswordException If the password is incorrect.
      * @throws IOException If there is an error reading from the stream or corrupt data is found.
      */
@@ -172,7 +156,14 @@ public class PDFParser extends COSParser
             // PDFBOX-1922 read the version header and rewind
             if (!parsePDFHeader() && !parseFDFHeader())
             {
-                throw new IOException( "Error: Header doesn't contain versioninfo" );
+                if (lenient)
+                {
+                    LOG.warn("Error: Header doesn't contain versioninfo");
+                }
+                else
+                {
+                    throw new IOException("Error: Header doesn't contain versioninfo");
+                }
             }
     
             if (!initialParseDone)

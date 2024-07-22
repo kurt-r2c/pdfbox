@@ -72,9 +72,7 @@ public class PDAnnotationInk extends PDAnnotationMarkup
         COSArray array = new COSArray();
         for (float[] path : inkList)
         {
-            COSArray innerArray = new COSArray();
-            innerArray.setFloatArray(path);
-            array.add(innerArray);
+            array.add(COSArray.of(path));
         }
         getCOSObject().setItem(COSName.INKLIST, array);
     }
@@ -111,7 +109,7 @@ public class PDAnnotationInk extends PDAnnotationMarkup
     /**
      * Set a custom appearance handler for generating the annotations appearance streams.
      * 
-     * @param appearanceHandler
+     * @param appearanceHandler custom appearance handler
      */
     public void setCustomAppearanceHandler(PDAppearanceHandler appearanceHandler)
     {

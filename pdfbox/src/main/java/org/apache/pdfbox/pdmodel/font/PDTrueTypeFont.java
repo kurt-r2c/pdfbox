@@ -21,14 +21,20 @@ import java.awt.geom.GeneralPath;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 import org.apache.fontbox.FontBoxFont;
+import org.apache.fontbox.cff.CFFFont;
+import org.apache.fontbox.cff.Type2CharString;
 import org.apache.fontbox.ttf.CmapSubtable;
 import org.apache.fontbox.ttf.CmapTable;
 import org.apache.fontbox.ttf.GlyphData;
+import org.apache.fontbox.ttf.GlyphTable;
+import org.apache.fontbox.ttf.OTFParser;
+import org.apache.fontbox.ttf.OpenTypeFont;
 import org.apache.fontbox.ttf.PostScriptTable;
 import org.apache.fontbox.ttf.TTFParser;
 import org.apache.fontbox.ttf.TrueTypeFont;
@@ -61,7 +67,7 @@ import static org.apache.pdfbox.pdmodel.font.UniUtil.getUniNameOfCodePoint;
  */
 public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
 {
-    private static final Log LOG = LogFactory.getLog(PDTrueTypeFont.class);
+    private static final Logger LOG = LogManager.getLogger(PDTrueTypeFont.class);
 
     private static final int START_RANGE_F000 = 0xF000;
     private static final int START_RANGE_F100 = 0xF100;
@@ -80,6 +86,7 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
     }
 
     private final TrueTypeFont ttf;
+    private final OpenTypeFont otf;
     private final boolean isEmbedded;
     private final boolean isDamaged;
     private CmapSubtable cmapWinUnicode = null;
@@ -93,6 +100,8 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
      * Creates a new TrueType font from a Font dictionary.
      *
      * @param fontDictionary The font dictionary according to the PDF specification.
+     * 
+     * @throws IOException if the font could not be created
      */
     public PDTrueTypeFont(COSDictionary fontDictionary) throws IOException
     {
@@ -109,15 +118,15 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
                 RandomAccessRead view = null;
                 try
                 {
-                    // embedded
-                    TTFParser ttfParser = new TTFParser(true);
                     view = ff2Stream.getCOSObject().createView();
+                    // embedded
+                    TTFParser ttfParser = getParser(view, true);
                     ttfFont = ttfParser.parse(view);
                     ttfFont.close();
                 }
                 catch (IOException e)
                 {
-                    LOG.warn("Could not read embedded TTF for font " + getBaseFont(), e);
+                    LOG.warn(() -> "Could not read embedded TTF for font " + getBaseFont(), e);
                     fontIsDamaged = true;
                     IOUtils.closeQuietly(view);
                 }
@@ -136,9 +145,11 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
 
             if (mapping.isFallback())
             {
-                LOG.warn("Using fallback font '" + ttfFont + "' for '" + getBaseFont() + "'");
+                LOG.warn("Using fallback font {} for {}", ttfFont, getBaseFont());
             }
         }
+        otf = ttfFont instanceof OpenTypeFont && ((OpenTypeFont) ttfFont).isSupportedOTF()
+                ? (OpenTypeFont) ttfFont : null;
         ttf = ttfFont;
         readEncoding();
     }
@@ -153,6 +164,8 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
                                                                      encoding);
         this.encoding = encoding;
         this.ttf = ttf;
+        // OpenTypeFonts are not fully supported yet
+        otf = null;
         setFontDescriptor(embedder.getFontDescriptor());
         isEmbedded = true;
         isDamaged = false;
@@ -242,6 +255,8 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
 
     /**
      * Returns the PostScript name of the font.
+     * 
+     * @return the PostScript name of the font
      */
     public final String getBaseFont()
     {
@@ -345,6 +360,8 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
 
     /**
      * Returns the embedded or substituted TrueType font.
+     * 
+     * @return the embedded or substituted TrueType font
      */
     public TrueTypeFont getTrueTypeFont()
     {
@@ -384,8 +401,8 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
             if (!encoding.contains(getGlyphList().codePointToName(unicode)))
             {
                 throw new IllegalArgumentException(
-                    String.format("U+%04X is not available in this font's encoding: %s",
-                                  unicode, encoding.getEncodingName()));
+                    String.format("U+%04X is not available in font %s encoding: %s",
+                                  unicode, getName(), encoding.getEncodingName()));
             }
 
             String name = getGlyphList().codePointToName(unicode);
@@ -421,7 +438,7 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
             if (code == null)
             {
                 throw new IllegalArgumentException(
-                    String.format("U+%04X is not available in this font's Encoding", unicode));
+                    String.format("U+%04X is not available in font %s encoding", unicode, getName()));
             }
             
             return new byte[] { (byte)(int)code };
@@ -430,6 +447,10 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
 
     /**
      * Inverts the font's code -&gt; GID mapping. Any duplicate (GID -&gt; code) mappings will be lost.
+     * 
+     * @return the GID for the given code
+     * 
+     * @throws IOException if the data could not be read
      */
     protected Map<Integer, Integer> getGIDToCode() throws IOException
     {
@@ -459,8 +480,20 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
     @Override
     public GeneralPath getPath(int code) throws IOException
     {
+        if (otf != null && otf.isPostScript())
+        {
+            GeneralPath path = getPathFromOutlines(code);
+            return path == null ? new GeneralPath() : path;
+        }
         int gid = codeToGID(code);
-        GlyphData glyph = ttf.getGlyph().getGlyph(gid);
+        GlyphTable glyphTable = ttf.getGlyph();
+        if (glyphTable == null)
+        {
+            // needs to be caught earlier, see PDFBOX-5587 and PDFBOX-3488
+            throw new IOException("glyf table is missing in font " + getName() +
+                    ", please report this file");
+        }
+        GlyphData glyph = glyphTable.getGlyph(gid);
         
         // some glyphs have no outlines (e.g. space, table, newline)
         if (glyph == null)
@@ -514,31 +547,42 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
     @Override
     public GeneralPath getNormalizedPath(int code) throws IOException
     {
-        boolean hasScaling = ttf.getUnitsPerEm() != 1000;
-        float scale = 1000f / ttf.getUnitsPerEm();
-        int gid = codeToGID(code);
-
-        GeneralPath path = getPath(code);
-
-        // Acrobat only draws GID 0 for embedded or "Standard 14" fonts, see PDFBOX-2372
-        if (gid == 0 && !isEmbedded() && !isStandard14())
+        GeneralPath path = null;
+        if (otf != null && otf.isPostScript())
         {
-            path = null;
-        }
-
-        if (path == null)
-        {
-            // empty glyph (e.g. space, newline)
-            return new GeneralPath();
+            path = getPathFromOutlines(code);
         }
         else
         {
-            if (hasScaling)
+            int gid = codeToGID(code);
+            path = getPath(code);
+            // Acrobat only draws GID 0 for embedded or "Standard 14" fonts, see PDFBOX-2372
+            if (gid == 0 && !isEmbedded() && !isStandard14())
             {
-                path.transform(AffineTransform.getScaleInstance(scale, scale));
+                path = null;
             }
-            return path;
         }
+        if (path == null)
+        {
+            return new GeneralPath();
+        }
+        if (ttf.getUnitsPerEm() != 1000)
+        {
+            float scale = 1000f / ttf.getUnitsPerEm();
+            // path will have to be cloned if it is cached in the future, see PDFBOX-5567
+            path.transform(AffineTransform.getScaleInstance(scale, scale));
+        }
+        return path;
+    }
+
+    private GeneralPath getPathFromOutlines(int code) throws IOException
+    {
+        CFFFont cffFont = otf.getCFF().getFont();
+        String name = getEncoding().getName(code);
+        int sid = cffFont.getCharset().getSID(name);
+        int gid = cffFont.getCharset().getGIDForSID(sid);
+        Type2CharString type2CharString = cffFont.getType2CharString(gid);
+        return type2CharString != null ? type2CharString.getPath() : null;
     }
 
     @Override
@@ -565,7 +609,7 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
      *
      * @param code character code
      * @return GID (glyph index)
-     * @throws java.io.IOException
+     * @throws IOException if the data could not be read
      */
     public int codeToGID(int code) throws IOException
     {
@@ -721,4 +765,28 @@ public class PDTrueTypeFont extends PDSimpleFont implements PDVectorFont
         }
         cmapInitialized = true;
     }
+
+    private TTFParser getParser(RandomAccessRead randomAccessRead, boolean isEmbedded)
+            throws IOException
+    {
+        long startPos = randomAccessRead.getPosition();
+        byte[] tagBytes = new byte[4];
+        int remainingBytes = tagBytes.length;
+        int amountRead;
+        while ((amountRead = randomAccessRead.read(tagBytes, tagBytes.length - remainingBytes,
+                remainingBytes)) > 0)
+        {
+            remainingBytes -= amountRead;
+        }
+        randomAccessRead.seek(startPos);
+        if ("OTTO".equals(new String(tagBytes, StandardCharsets.US_ASCII)))
+        {
+            return new OTFParser(isEmbedded);
+        }
+        else
+        {
+            return new TTFParser(isEmbedded);
+        }
+    }
+
 }

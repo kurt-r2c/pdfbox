@@ -23,8 +23,8 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 import org.apache.fontbox.FontBoxFont;
 import org.apache.fontbox.cff.CFFCIDFont;
 import org.apache.fontbox.cff.CFFFont;
@@ -49,7 +49,7 @@ import static org.apache.pdfbox.pdmodel.font.UniUtil.getUniNameOfCodePoint;
  */
 public class PDCIDFontType0 extends PDCIDFont
 {
-    private static final Log LOG = LogFactory.getLog(PDCIDFontType0.class);
+    private static final Logger LOG = LogManager.getLogger(PDCIDFontType0.class);
 
     private final CFFCIDFont cidFont;  // Top DICT that uses CIDFont operators
     private final FontBoxFont t1Font; // Top DICT that does not use CIDFont operators
@@ -68,6 +68,8 @@ public class PDCIDFontType0 extends PDCIDFont
      * 
      * @param fontDictionary The font dictionary according to the PDF specification.
      * @param parent The parent font.
+     * 
+     * @throws IOException if the font could not be read
      */
     public PDCIDFontType0(COSDictionary fontDictionary, PDType0Font parent) throws IOException
     {
@@ -86,7 +88,7 @@ public class PDCIDFontType0 extends PDCIDFont
                     if (randomAccessRead.length() > 0 && randomAccessRead.peek() == '%')
                     {
                         // PDFBOX-2642 contains a corrupt PFB font instead of a CFF
-                        LOG.warn("Found PFB but expected embedded CFF font " + fd.getFontName());
+                        LOG.warn("Found PFB but expected embedded CFF font {}", fd.getFontName());
                         fontIsDamaged = true;
                     }
                     else
@@ -97,7 +99,7 @@ public class PDCIDFontType0 extends PDCIDFont
                 }
                 catch (IOException e)
                 {
-                    LOG.error("Can't read the embedded CFF font " + fd.getFontName(), e);
+                    LOG.error(() -> "Can't read the embedded CFF font " + fd.getFontName(), e);
                     fontIsDamaged = true;
                 }
             }
@@ -154,8 +156,7 @@ public class PDCIDFontType0 extends PDCIDFont
 
             if (mapping.isFallback())
             {
-                LOG.warn("Using fallback " + font.getName() + " for CID-keyed font " +
-                         getBaseFont());
+                LOG.warn("Using fallback {} for CID-keyed font {}", font.getName(), getBaseFont());
             }
             isEmbedded = false;
             isDamaged = fontIsDamaged;
@@ -237,6 +238,8 @@ public class PDCIDFontType0 extends PDCIDFont
 
     /**
      * Returns the embedded CFF CIDFont, or null if the substitute is not a CFF font.
+     * 
+     * @return the embedded CFF CIDFont or null
      */
     public CFFFont getCFFFont()
     {
@@ -256,6 +259,8 @@ public class PDCIDFontType0 extends PDCIDFont
 
     /**
      * Returns the embedded or substituted font.
+     * 
+     * @return the embedded or substituted font
      */
     public FontBoxFont getFontBoxFont()
     {
@@ -270,10 +275,12 @@ public class PDCIDFontType0 extends PDCIDFont
     }
 
     /**
-     * Returns the Type 2 charstring for the given CID, or null if the substituted font does not
-     * contain Type 2 charstrings.
+     * Returns the Type 2 charstring for the given CID, or null if the substituted font does not contain Type 2
+     * charstrings.
      *
      * @param cid CID
+     * @return the Type 2 charstring for the given CID or null
+     * 
      * @throws IOException if the charstring could not be read
      */
     public Type2CharString getType2CharString(int cid) throws IOException

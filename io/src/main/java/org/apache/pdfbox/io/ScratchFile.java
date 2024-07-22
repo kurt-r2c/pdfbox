@@ -16,13 +16,14 @@
  */
 package org.apache.pdfbox.io;
 
-import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 /**
  * Implements a memory page handling mechanism as base for creating (multiple)
@@ -47,9 +48,9 @@ import org.apache.commons.logging.LogFactory;
  * 
  * <p>This base class for providing pages is thread safe (the buffer implementations are not).</p>
  */
-public class ScratchFile implements Closeable
+public class ScratchFile implements RandomAccessStreamCache
 {
-    private static final Log LOG = LogFactory.getLog(ScratchFile.class);
+    private static final Logger LOG = LogManager.getLogger(ScratchFile.class);
 
     /** number of pages by which we enlarge the scratch file (reduce I/O-operations) */
     private static final int ENLARGE_PAGE_COUNT = 16;
@@ -74,6 +75,8 @@ public class ScratchFile implements Closeable
     private final int maxPageCount;
     private final boolean useScratchFile;
     private final boolean maxMainMemoryIsRestricted;
+
+    private final List<ScratchFileBuffer> buffers = new ArrayList<>();
 
     private volatile boolean isClosed = false;
     
@@ -106,7 +109,8 @@ public class ScratchFile implements Closeable
      */
     public ScratchFile(MemoryUsageSetting memUsageSetting) throws IOException
     {
-        maxMainMemoryIsRestricted = (!memUsageSetting.useMainMemory()) || memUsageSetting.isMainMemoryRestricted();
+        maxMainMemoryIsRestricted = !memUsageSetting.useMainMemory()
+                || memUsageSetting.isMainMemoryRestricted();
         useScratchFile = maxMainMemoryIsRestricted && memUsageSetting.useTempFile();
         scratchFileDirectory = useScratchFile ? memUsageSetting.getTempDir() : null;
 
@@ -124,9 +128,16 @@ public class ScratchFile implements Closeable
                                        (int) Math.min(Integer.MAX_VALUE, memUsageSetting.getMaxMainMemoryBytes() / PAGE_SIZE) :
                                        Integer.MAX_VALUE) :
                                    0;
-        inMemoryPages = new byte[maxMainMemoryIsRestricted ? inMemoryMaxPageCount : INIT_UNRESTRICTED_MAINMEM_PAGECOUNT][];
-        
-        freePages.set(0, inMemoryPages.length);
+    }
+
+    private void initPages()
+    {
+        if (inMemoryPages == null)
+        {
+            inMemoryPages = new byte[maxMainMemoryIsRestricted ? inMemoryMaxPageCount
+                    : INIT_UNRESTRICTED_MAINMEM_PAGECOUNT][];
+            freePages.set(0, inMemoryPages.length);
+        }
     }
 
     /**
@@ -144,7 +155,9 @@ public class ScratchFile implements Closeable
         catch (IOException ioe)
         {
             // cannot happen for main memory setup
-            LOG.error("Unexpected exception occurred creating main memory scratch file instance: " + ioe.getMessage(), ioe);
+            LOG.error(() ->
+                    "Unexpected exception occurred creating main memory scratch file instance: " +
+                            ioe.getMessage(), ioe);
             return null;
         }
     }
@@ -167,7 +180,9 @@ public class ScratchFile implements Closeable
         catch (IOException ioe)
         {
             // cannot happen for main memory setup
-            LOG.error("Unexpected exception occurred creating main memory scratch file instance: " + ioe.getMessage(), ioe);
+            LOG.error(() -> 
+                    "Unexpected exception occurred creating main memory scratch file instance: " +
+                        ioe.getMessage(), ioe);
             return null;
         }
     }
@@ -182,6 +197,7 @@ public class ScratchFile implements Closeable
     {
         synchronized (freePages)
         {
+            initPages();
             int idx = freePages.nextSetBit( 0 );
             
             if (idx < 0)
@@ -245,7 +261,7 @@ public class ScratchFile implements Closeable
                     {
                         if (!file.delete())
                         {
-                            LOG.warn("Error deleting scratch file: " + file.getAbsolutePath());
+                            LOG.warn("Error deleting scratch file: {}", file.getAbsolutePath());
                         }
                         throw e;
                     }
@@ -420,11 +436,24 @@ public class ScratchFile implements Closeable
      * 
      * @throws IOException If an error occurred.
      */
+    @Override
     public RandomAccess createBuffer() throws IOException
     {
-        return new ScratchFileBuffer(this);
+        ScratchFileBuffer newBuffer = new ScratchFileBuffer(this);
+        synchronized (buffers)
+        {
+            buffers.add(newBuffer);
+        }
+        return newBuffer;
     }
 
+    void removeBuffer(ScratchFileBuffer buffer)
+    {
+        synchronized (buffers)
+        {
+            buffers.remove(buffer);
+        }
+    }
     /**
      * Allows a buffer which is cleared/closed to release its pages to be re-used.
      * 
@@ -473,6 +502,14 @@ public class ScratchFile implements Closeable
         
             isClosed = true;
 
+            for (ScratchFileBuffer buffer : buffers)
+            {
+                if (buffer != null && !buffer.isClosed())
+                {
+                    buffer.close(false);
+                }
+            }
+            buffers.clear();
             if (raf != null)
             {
                 try

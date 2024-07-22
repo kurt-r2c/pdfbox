@@ -63,7 +63,7 @@ public class PDAnnotationPolyline extends PDAnnotationMarkup
     {
         String actualStyle = style == null ? PDAnnotationLine.LE_NONE : style;
         COSArray array = getCOSObject().getCOSArray(COSName.LE);
-        if (array == null || array.size() == 0)
+        if (array == null || array.isEmpty())
         {
             array = new COSArray();
             array.add(COSName.getPDFName(actualStyle));
@@ -169,15 +169,13 @@ public class PDAnnotationPolyline extends PDAnnotationMarkup
      */
     public void setVertices(float[] points)
     {
-        COSArray ar = new COSArray();
-        ar.setFloatArray(points);
-        getCOSObject().setItem(COSName.VERTICES, ar);
+        getCOSObject().setItem(COSName.VERTICES, COSArray.of(points));
     }
 
     /**
      * Set a custom appearance handler for generating the annotations appearance streams.
      * 
-     * @param appearanceHandler
+     * @param appearanceHandler custom appearance handler
      */
     public void setCustomAppearanceHandler(PDAppearanceHandler appearanceHandler)
     {
